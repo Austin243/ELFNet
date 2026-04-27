@@ -78,14 +78,20 @@ parts. Download all parts plus checksums:
 gh release download dataset-v1 \
   --repo Austin243/ELFNet \
   --pattern 'elfnet-aab-sweep-v1.tar.zst.part-*' \
-  --pattern 'SHA256SUMS'
+  --pattern 'SHA256SUMS*'
 ```
 
-Reassemble and verify:
+Verify the downloaded parts:
+
+```bash
+sha256sum -c SHA256SUMS
+```
+
+Reassemble and verify the combined archive:
 
 ```bash
 cat elfnet-aab-sweep-v1.tar.zst.part-* > elfnet-aab-sweep-v1.tar.zst
-sha256sum -c SHA256SUMS
+sha256sum -c SHA256SUMS.full
 ```
 
 Extract:
