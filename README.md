@@ -1,60 +1,54 @@
 # ELFNet
 
-ELFNet is a clean release directory for the best-performing ChiNet SAD-to-ELF
-model found in the local model inventory.
+ELFNet predicts electron localization function (ELF) grids from superposed
+atomic density (SAD) grids for periodic crystal structures.
 
-The released architecture is a periodic, symmetry-aware 3D U-Net trained on
-SAD/ELF patches with Seitz symmetry pooling. The canonical checkpoint is:
+The package includes:
 
-```text
-best_chinet_epoch0114.ckpt
-source: /home/aellis/ChiNet/checkpoints_sad2elf/batch2/SAD2ELF_20251104_124933/best_epoch=0114.ckpt
-val/loss_fixed: 0.0088327322
-epoch: 114
-global_step: 499905
-```
-
-The checkpoint is 334 MB and is tracked with Git LFS rather than normal git.
-After cloning, install Git LFS and pull the model file:
-
-```bash
-git lfs install
-git lfs pull
-```
+- a pretrained symmetry-aware 3D U-Net checkpoint
+- POSCAR-to-ELFCAR inference utilities
+- periodic patch data loaders for training and fine-tuning
+- bundled neutral-density tables for SAD construction
 
 ## Install
 
 ```bash
-cd ~/github/ELFNet
+git clone git@github.com:Austin243/ELFNet.git
+cd ELFNet
+git lfs install
+git lfs pull
 python -m pip install -e ".[symmetry]"
 ```
 
-`pymatgen` is optional but recommended. Without it, inference can run with
-identity symmetry by passing `--identity-symmetry`. Training additionally needs
-Lightning:
+`pymatgen` is optional but recommended for symmetry detection. Without it,
+inference can still run with `--identity-symmetry`.
+
+Training additionally needs Lightning:
 
 ```bash
 python -m pip install -e ".[train,symmetry]"
 ```
 
-## Predict ELF from POSCAR files
+## Predict ELF From POSCAR Files
+
+Inputs must be files named `POSCAR_*`. Outputs are written as `ELFCAR_*.vasp`.
 
 ```bash
 elfnet-predict \
-  weights/best_chinet_epoch0114.ckpt \
+  weights/elfnet_sad2elf.ckpt \
   examples/poscars \
   runs/example_outputs \
   --device auto \
   --batch-size 8
 ```
 
-Inputs must be files named `POSCAR_*`. Outputs are written as `ELFCAR_*.vasp`.
-The package includes the neutral-density tables needed to construct the SAD
-input grids.
+The inference pipeline builds a SAD grid from the POSCAR, estimates a
+VASP-style FFT grid from `ENCUT`, applies symmetry-aware patch inference, and
+stitches predictions into an ELFCAR-like volumetric file.
 
-## Train or fine-tune
+## Fine-Tune Or Train
 
-Training data must be triplets sharing a stem:
+Training data should be stored as matched triplets sharing a stem:
 
 ```text
 <stem>_sad.npy
@@ -68,19 +62,20 @@ Run:
 elfnet-train /path/to/triplets --epochs 150 --batch 2
 ```
 
-The default architecture and loss settings match the best ChiNet checkpoint:
+The default training configuration matches the included pretrained model:
 `base=24`, `depth=5`, `blocks_per_stage=1`, `sym_every_stage=True`,
 `lr=3e-4`, and `high_value_weight=5.0`.
 
-## Repository layout
+## Layout
 
 ```text
-src/elfnet/model.py       periodic symmetry-aware U-Net and Lightning module
-src/elfnet/data.py        SAD/ELF patch dataset and DDP-safe loaders
+src/elfnet/model.py       periodic symmetry-aware U-Net
+src/elfnet/data.py        SAD/ELF patch datasets and loaders
 src/elfnet/inference.py   POSCAR-to-ELFCAR prediction pipeline
 src/elfnet/checkpoints.py checkpoint metadata and loading helpers
-configs/best_chinet.yaml  canonical checkpoint configuration
+configs/default.yaml      default model and training configuration
+weights/                  pretrained checkpoint tracked with Git LFS
 examples/poscars/         small POSCAR example for smoke testing
 ```
 
-See `MODEL_CARD.md` for provenance, expected inputs, and current limitations.
+See `MODEL_CARD.md` for model details, intended use, and limitations.

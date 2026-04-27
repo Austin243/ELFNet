@@ -1,9 +1,9 @@
 """ELFNet: symmetry-aware SAD-to-ELF prediction."""
 
-from .checkpoints import BEST_CHINET_CHECKPOINT, resolve_checkpoint
+from .checkpoints import DEFAULT_CHECKPOINT, resolve_checkpoint
 
 __all__ = [
-    "BEST_CHINET_CHECKPOINT",
+    "DEFAULT_CHECKPOINT",
     "Sad2ElfLitModule",
     "UNet3DPeriodic",
     "resolve_checkpoint",

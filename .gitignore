@@ -18,11 +18,11 @@ outputs/
 lightning_logs/
 wandb/
 
-# Large model artifacts. Publish these with Git LFS or GitHub Releases.
+# Large model artifacts. Track release checkpoints explicitly with Git LFS.
 weights/*.ckpt
 weights/*.pt
 weights/*.pth
-!weights/best_chinet_epoch0114.ckpt
+!weights/elfnet_sad2elf.ckpt
 !weights/README.md
 
 # Platform/editor files
