@@ -6,13 +6,12 @@ import os
 from pathlib import Path
 from typing import Any
 
-BEST_CHINET_CHECKPOINT = {
-    "name": "best_chinet_epoch0114.ckpt",
-    "source_path": "/home/aellis/ChiNet/checkpoints_sad2elf/batch2/SAD2ELF_20251104_124933/best_epoch=0114.ckpt",
+DEFAULT_CHECKPOINT = {
+    "name": "elfnet_sad2elf.ckpt",
     "epoch": 114,
     "global_step": 499905,
-    "monitor": "val/loss_fixed",
-    "score": 0.0088327322,
+    "validation_metric": "weighted_smooth_l1",
+    "validation_score": 0.0088327322,
     "hparams": {
         "base": 24,
         "depth": 5,
@@ -25,7 +24,7 @@ BEST_CHINET_CHECKPOINT = {
 
 
 def resolve_checkpoint(path: str | Path | None = None) -> Path:
-    """Resolve a checkpoint path from an explicit path, env var, or local weights dir."""
+    """Resolve a checkpoint path from an explicit path, env var, or package weights dir."""
     candidates: list[Path] = []
     if path is not None:
         candidates.append(Path(path).expanduser())
@@ -34,7 +33,7 @@ def resolve_checkpoint(path: str | Path | None = None) -> Path:
     if env_path:
         candidates.append(Path(env_path).expanduser())
 
-    name = str(BEST_CHINET_CHECKPOINT["name"])
+    name = str(DEFAULT_CHECKPOINT["name"])
     candidates.extend([
         Path.cwd() / "weights" / name,
         Path(__file__).resolve().parents[2] / "weights" / name,
@@ -47,13 +46,13 @@ def resolve_checkpoint(path: str | Path | None = None) -> Path:
     checked = "\n".join(f"  - {p}" for p in candidates)
     raise FileNotFoundError(
         "ELFNet checkpoint not found. Pass --checkpoint, set ELFNET_CHECKPOINT, "
-        "or place the file at weights/best_chinet_epoch0114.ckpt.\n"
+        "or place the file at weights/elfnet_sad2elf.ckpt.\n"
         f"Checked:\n{checked}"
     )
 
 
 def load_model(path: str | Path | None = None, map_location: str | None = "cpu") -> Any:
-    """Load the best-compatible Lightning model from a checkpoint."""
+    """Load the ELFNet model from a checkpoint."""
     from .model import Sad2ElfLitModule
 
     checkpoint = resolve_checkpoint(path)

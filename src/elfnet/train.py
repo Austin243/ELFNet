@@ -9,8 +9,8 @@ Key points:
 - One process per GPU: devices=1 (your SLURM job already launches 1 task/GPU).
 - Keeps your fixed-weights validation metric for stable checkpoint selection.
 
-This training entry point is compatible with the architecture used by the
-best ChiNet checkpoint, but writes new runs to this repository by default.
+This training entry point uses the same architecture as the packaged
+pretrained model and writes new runs to this repository by default.
 """
 
 from __future__ import annotations

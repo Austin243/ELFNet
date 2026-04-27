@@ -1,20 +1,17 @@
 # Weights
 
-The best ChiNet checkpoint is tracked with Git LFS as:
+The pretrained ELFNet checkpoint is tracked with Git LFS:
 
 ```text
-weights/best_chinet_epoch0114.ckpt
+weights/elfnet_sad2elf.ckpt
 ```
 
-The original local source checkpoint on this machine is:
-
-```text
-/home/aellis/ChiNet/checkpoints_sad2elf/batch2/SAD2ELF_20251104_124933/best_epoch=0114.ckpt
-```
-
-After cloning, run:
+After cloning the repository, run:
 
 ```bash
 git lfs install
 git lfs pull
 ```
+
+If the checkpoint file is only a small text pointer, Git LFS has not downloaded
+the actual model weights yet.

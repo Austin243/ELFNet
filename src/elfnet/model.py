@@ -10,8 +10,7 @@ SAD-to-ELF periodic, symmetry-aware 3D model.
   where S = diag(ps/Nx, ps/Ny, ps/Nz) rescales from patch coords to unit-cell fractions.
 - Loss = Smooth L1 (Huber) voxel loss with extra weight on high-value voxels.
 
-The best public checkpoint for this architecture is the ChiNet
-``best_epoch=0114.ckpt`` artifact documented in ``MODEL_CARD.md``.
+The packaged pretrained checkpoint is documented in ``MODEL_CARD.md``.
 """
 
 from __future__ import annotations

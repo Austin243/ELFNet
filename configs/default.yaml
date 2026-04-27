@@ -1,10 +1,9 @@
 checkpoint:
-  name: best_chinet_epoch0114.ckpt
-  local_source: /home/aellis/ChiNet/checkpoints_sad2elf/batch2/SAD2ELF_20251104_124933/best_epoch=0114.ckpt
+  name: elfnet_sad2elf.ckpt
   epoch: 114
   global_step: 499905
-  monitor: val/loss_fixed
-  score: 0.0088327322
+  validation_metric: weighted_smooth_l1
+  validation_score: 0.0088327322
 
 model:
   sad_idx: 0

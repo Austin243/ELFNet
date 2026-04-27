@@ -1,24 +1,24 @@
-# ELFNet Best ChiNet Checkpoint
+# ELFNet Model Card
 
-## Model
+## Model Details
 
-- Architecture: periodic 3D U-Net with patch-local Seitz symmetry averaging.
-- Task: map superposed atomic density (SAD) grids to electron localization
-  function (ELF) grids.
-- Input: one SAD channel, shaped `(B, 1, D, H, W)`.
-- Output: one ELF channel clamped to `[0, 1]`.
-- Training mode: periodic patches with origin jitter and high-ELF voxel weighting.
+ELFNet is a periodic, symmetry-aware 3D U-Net for predicting electron
+localization function (ELF) fields from superposed atomic density (SAD) fields.
 
-## Best Checkpoint
+- Input: one SAD channel shaped `(B, 1, D, H, W)`
+- Output: one ELF channel clipped to `[0, 1]`
+- Architecture: periodic 3D U-Net with patch-local Seitz symmetry averaging
+- Training mode: periodic patch training with origin jitter
+- Loss: weighted Smooth L1 with additional emphasis on high-ELF voxels
 
-- Name for release: `best_chinet_epoch0114.ckpt`
-- Local source path:
-  `/home/aellis/ChiNet/checkpoints_sad2elf/batch2/SAD2ELF_20251104_124933/best_epoch=0114.ckpt`
+## Included Checkpoint
+
+- File: `weights/elfnet_sad2elf.ckpt`
 - Epoch: `114`
 - Global step: `499905`
-- Monitor: `val/loss_fixed`
-- Best score: `0.0088327322`
-- Lightning version recorded in checkpoint: `2.5.5`
+- Validation metric: weighted Smooth L1
+- Validation score: `0.0088327322`
+- Checkpoint format: PyTorch Lightning
 
 Checkpoint hyperparameters:
 
@@ -39,26 +39,26 @@ min_patch_size: 32
 val_metric: loss/vox
 ```
 
-## Provenance
-
-This repository is centered on the best ChiNet checkpoint. The compatible model
-and data-loader lineage is from `TestNet/experiments/scripts2`, because the
-inventory found that current `ChiNet/scripts` does not match this checkpoint
-family cleanly.
-
 ## Intended Use
 
-- Rapid ELF prediction from POSCAR structures for screening and visualization.
-- Research use where the SAD construction, neutral-density tables, and symmetry
-  handling match the assumptions in this repository.
-- Fine-tuning or retraining on triplet datasets containing `*_sad.npy`,
-  `*_elf.npy`, and `*_sym.npy` files.
+- Fast ELF prediction from POSCAR structures
+- Screening workflows where approximate ELF fields are useful before running
+  more expensive electronic-structure calculations
+- Visualization and analysis of periodic materials
+- Fine-tuning on compatible SAD/ELF/symmetry triplet datasets
+
+## Input Assumptions
+
+The bundled inference pipeline constructs SAD grids from neutral-density tables
+included in the package. For best results, use the same SAD construction for
+training, fine-tuning, and inference.
 
 ## Limitations
 
-- Quantitative comparison to VASP ELFCAR references requires putting model and
-  DFT grids on a common grid.
-- The bundled SAD construction is a project-defined neutral-density
-  representation, not VASP's internal `ICHARG=2` charge density.
-- The best checkpoint is tracked through Git LFS. Users without Git LFS will
-  receive only the pointer file until they run `git lfs pull`.
+- ELFNet predictions are model estimates, not replacements for converged DFT
+  calculations when high-accuracy electronic structure is required.
+- Direct quantitative comparison to VASP ELFCAR files requires putting both
+  fields on a common grid.
+- The SAD representation used here is a project-defined neutral-density input,
+  not VASP's internal `ICHARG=2` charge density.
+- Git LFS is required to retrieve the included checkpoint after cloning.

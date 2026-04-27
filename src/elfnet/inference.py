@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Inference for the ChiNet ELFNet SAD-to-ELF checkpoint.
+Inference for the pretrained ELFNet SAD-to-ELF checkpoint.
 
 Usage:
   elfnet-predict /path/to/checkpoint.ckpt ./inputs ./outputs \
@@ -15,7 +15,7 @@ on that grid, construct Seitz symmetry operations {R|t} in fractional coords, ru
 trained model on periodic patches, and write 'ELFCAR_*.vasp' into outputs.
 
 The default packaged neutral densities match the data-generation convention
-used by the best available ChiNet checkpoint.
+used by the pretrained model.
 """
 from __future__ import annotations
 
