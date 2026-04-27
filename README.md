@@ -9,6 +9,7 @@ The package includes:
 - POSCAR-to-ELFCAR inference utilities
 - periodic patch data loaders for training and fine-tuning
 - bundled neutral-density tables for SAD construction
+- a published A/AB sweep dataset release for training and evaluation
 
 ## Install
 
@@ -62,6 +63,10 @@ Run:
 elfnet-train /path/to/triplets --epochs 150 --batch 2
 ```
 
+The dataset used with the included checkpoint is available as split GitHub
+release assets. See `DATASET.md` for provenance, statistics, and download
+instructions.
+
 The default training configuration matches the included pretrained model:
 `base=24`, `depth=5`, `blocks_per_stage=1`, `sym_every_stage=True`,
 `lr=3e-4`, and `high_value_weight=5.0`.
@@ -74,8 +79,10 @@ src/elfnet/data.py        SAD/ELF patch datasets and loaders
 src/elfnet/inference.py   POSCAR-to-ELFCAR prediction pipeline
 src/elfnet/checkpoints.py checkpoint metadata and loading helpers
 configs/default.yaml      default model and training configuration
+dataset/                  lightweight dataset manifest and statistics
 weights/                  pretrained checkpoint tracked with Git LFS
 examples/poscars/         small POSCAR example for smoke testing
 ```
 
-See `MODEL_CARD.md` for model details, intended use, and limitations.
+See `MODEL_CARD.md` for model details, intended use, and limitations. See
+`DATASET.md` for dataset download and provenance.

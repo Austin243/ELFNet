@@ -11,6 +11,12 @@ venv/
 # Build artifacts
 build/
 dist/
+release/
+*.tar
+*.tar.zst
+*.tar.gz
+*.part-*
+SHA256SUMS
 
 # Local outputs
 runs/
