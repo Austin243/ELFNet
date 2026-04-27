@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Build artifacts
+build/
+dist/
+
+# Local outputs
+runs/
+outputs/
+lightning_logs/
+wandb/
+
+# Large model artifacts. Publish these with Git LFS or GitHub Releases.
+weights/*.ckpt
+weights/*.pt
+weights/*.pth
+!weights/README.md
+
+# Platform/editor files
+.DS_Store
+._*
+*.swp

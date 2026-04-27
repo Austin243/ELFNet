@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "elfnet"
+version = "0.1.0"
+description = "Symmetry-aware SAD-to-ELF prediction with the best ChiNet checkpoint architecture"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+  { name = "Andrew Ellis" }
+]
+dependencies = [
+  "numpy>=1.23",
+  "torch>=2.1",
+]
+
+[project.optional-dependencies]
+train = ["lightning>=2.2"]
+symmetry = ["pymatgen>=2024.1"]
+dev = ["pytest>=7"]
+
+[project.scripts]
+elfnet-predict = "elfnet.inference:main"
+elfnet-train = "elfnet.train:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+elfnet = ["neutral_densities/*.pkl"]

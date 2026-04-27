@@ -1,0 +1,27 @@
+checkpoint:
+  name: best_chinet_epoch0114.ckpt
+  local_source: /home/aellis/ChiNet/checkpoints_sad2elf/batch2/SAD2ELF_20251104_124933/best_epoch=0114.ckpt
+  epoch: 114
+  global_step: 499905
+  monitor: val/loss_fixed
+  score: 0.0088327322
+
+model:
+  sad_idx: 0
+  elf_idx: 1
+  base: 24
+  depth: 5
+  blocks_per_stage: 1
+  dropout: 0.0
+  sym_every_stage: true
+  min_patch_size: 32
+
+loss:
+  high_value_margin: 0.25
+  high_value_weight: 5.0
+
+training:
+  lr: 0.0003
+  weight_decay: 0.0001
+  max_epochs: 501
+  val_metric: loss/vox
