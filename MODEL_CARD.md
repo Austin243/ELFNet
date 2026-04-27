@@ -60,6 +60,5 @@ family cleanly.
   DFT grids on a common grid.
 - The bundled SAD construction is a project-defined neutral-density
   representation, not VASP's internal `ICHARG=2` charge density.
-- The best checkpoint is large enough that it should be published through Git
-  LFS, a GitHub Release asset, or a model-hosting service rather than normal
-  git history.
+- The best checkpoint is tracked through Git LFS. Users without Git LFS will
+  receive only the pointer file until they run `git lfs pull`.

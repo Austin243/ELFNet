@@ -22,6 +22,7 @@ wandb/
 weights/*.ckpt
 weights/*.pt
 weights/*.pth
+!weights/best_chinet_epoch0114.ckpt
 !weights/README.md
 
 # Platform/editor files
