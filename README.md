@@ -47,6 +47,31 @@ The inference pipeline builds a SAD grid from the POSCAR, estimates a
 VASP-style FFT grid from `ENCUT`, applies symmetry-aware patch inference, and
 stitches predictions into an ELFCAR-like volumetric file.
 
+## Dataset
+
+The ELFNet A/AB sweep dataset is published as GitHub release assets:
+
+```text
+https://github.com/Austin243/ELFNet/releases/tag/dataset-v1
+```
+
+It contains `77,279` matched SAD/ELF/symmetry triplets, about `21 GB` unpacked
+and about `7.9 GB` compressed. The sweep covers elemental and binary metallic
+prototype structures across multiple lattice-parameter tags, with symmetry
+operation counts ranging from `4` to `192`.
+
+Download all archive parts and checksums:
+
+```bash
+gh release download dataset-v1 \
+  --repo Austin243/ELFNet \
+  --pattern 'elfnet-aab-sweep-v1.tar.zst.part-*' \
+  --pattern 'SHA256SUMS*'
+```
+
+See `DATASET.md` for provenance, statistics, verification, and extraction
+instructions.
+
 ## Fine-Tune Or Train
 
 Training data should be stored as matched triplets sharing a stem:
