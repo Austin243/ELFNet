@@ -14,12 +14,12 @@ epoch: 114
 global_step: 499905
 ```
 
-The checkpoint is 334 MB and is intentionally not tracked in normal git. Before
-publishing, put it in Git LFS, attach it to a GitHub Release, or host it on a
-model hub. For local testing on this machine:
+The checkpoint is 334 MB and is tracked with Git LFS rather than normal git.
+After cloning, install Git LFS and pull the model file:
 
 ```bash
-python scripts/import_best_chinet_checkpoint.py --mode symlink
+git lfs install
+git lfs pull
 ```
 
 ## Install
