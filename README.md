@@ -3,111 +3,193 @@
 ELFNet predicts electron localization function (ELF) grids from superposed
 atomic density (SAD) grids for periodic crystal structures.
 
-The package includes:
+This repository is now centered on the verified ChiNet full-grid model:
 
-- a pretrained symmetry-aware 3D U-Net checkpoint
-- POSCAR-to-ELFCAR inference utilities
-- periodic patch data loaders for training and fine-tuning
-- bundled neutral-density tables for SAD construction
-- a published A/AB sweep dataset release for training and evaluation
+```text
+local source checkpoint: /home/aellis/ChiNet/epoch1000.ckpt
+repo checkpoint:         weights/elfnet_sad2elf.ckpt
+model class:             ELFPredictor
+architecture:            ResidualUNet3D
+inference mode:          full SAD grid -> full ELF grid
+symmetry input:          none
+patch inference:         none
+```
+
+The bundled checkpoint exactly reproduces the flat prediction files currently
+stored in `/home/aellis/ChiNet/outputs` when run through the old ChiNet
+inference convention.
 
 ## Install
 
 ```bash
-git clone git@github.com:Austin243/ELFNet.git
-cd ELFNet
 git lfs install
 git lfs pull
-python -m pip install -e ".[symmetry]"
+python -m pip install -e .
 ```
 
-`pymatgen` is optional but recommended for symmetry detection. Without it,
-inference can still run with `--identity-symmetry`.
-
-Training additionally needs Lightning:
+For training or fine-tuning:
 
 ```bash
-python -m pip install -e ".[train,symmetry]"
+python -m pip install -e ".[train]"
 ```
 
-## Predict ELF From POSCAR Files
+## Quick Inference
 
-Inputs must be files named `POSCAR_*`. Outputs are written as `ELFCAR_*.vasp`.
+Inputs are POSCAR files named `POSCAR_*`.
 
 ```bash
 elfnet-predict \
   weights/elfnet_sad2elf.ckpt \
   examples/poscars \
-  runs/example_outputs \
-  --device auto \
-  --batch-size 8
+  runs/example_outputs
 ```
 
-The inference pipeline builds a SAD grid from the POSCAR, estimates a
-VASP-style FFT grid from `ENCUT`, applies symmetry-aware patch inference, and
-stitches predictions into an ELFCAR-like volumetric file.
-
-## Dataset
-
-The ELFNet A/AB sweep dataset is published as GitHub release assets:
-
-```text
-https://github.com/Austin243/ELFNet/releases/tag/dataset-v1
-```
-
-It contains `77,279` matched SAD/ELF/symmetry triplets, about `21 GB` unpacked
-and about `7.9 GB` compressed. The sweep covers elemental and binary metallic
-prototype structures across multiple lattice-parameter tags, with symmetry
-operation counts ranging from `4` to `192`.
-
-Download all archive parts and checksums:
+You can also omit the checkpoint if `weights/elfnet_sad2elf.ckpt` exists or
+`ELFNET_CHECKPOINT` is set:
 
 ```bash
-gh release download dataset-v1 \
-  --repo Austin243/ELFNet \
-  --pattern 'elfnet-aab-sweep-v1.tar.zst.part-*' \
-  --pattern 'SHA256SUMS*'
+elfnet-predict examples/poscars runs/example_outputs
 ```
 
-See `DATASET.md` for provenance, statistics, verification, and extraction
-instructions.
+The inference pipeline:
 
-## Fine-Tune Or Train
+1. parses each `POSCAR_*`;
+2. estimates a VASP-like grid from the lattice, `ENCUT=680 eV`, and `PREC=Accurate`;
+3. builds the project SAD grid from packaged neutral-density tables;
+4. runs one full-grid forward pass through `ELFPredictor`;
+5. writes `ELFCAR_<id>.vasp`.
 
-Training data should be stored as matched triplets sharing a stem:
+This model does not detect or consume crystallographic symmetry operations.
+It does not tile the input into patches or blend overlapping patch predictions.
+
+## Verified Output Provenance
+
+The model used for the current flat files in:
+
+```text
+/home/aellis/ChiNet/outputs
+```
+
+is:
+
+```text
+/home/aellis/ChiNet/epoch1000.ckpt
+```
+
+Verification performed on 2026-04-27:
+
+```text
+rerun checkpoint: /home/aellis/ChiNet/epoch1000.ckpt
+inputs:           /home/aellis/ChiNet/inputs/POSCAR_*
+scratch outputs:  /home/aellis/SAD2ELFNet/provenance_chinet_outputs/epoch1000_outputs
+comparison:       every ELFCAR_*.vasp matched ChiNet/outputs byte-for-byte
+```
+
+The later epoch-114 SAD2ELF checkpoint is a different symmetry-aware model
+family and does not explain these output files.
+
+## Model Architecture
+
+`ELFPredictor` wraps `ResidualUNet3D`.
+
+Key details:
+
+- input: one SAD channel, shape `(B, 1, D, H, W)`
+- output: one ELF channel plus auxiliary decoder predictions
+- base channels: `16`
+- depth: `4`
+- padding: circular 3D convolutions
+- residual blocks: Conv3D, GroupNorm, GELU, Conv3D, GroupNorm, squeeze-excitation
+- bottleneck: two residual blocks plus 3D CBAM attention
+- decoder: transposed-convolution upsampling with skip connections
+- output head: sigmoid-bounded ELF prediction
+- grid handling: pad to multiples of 16, run full-grid model, crop back
+
+The checkpoint has about `10.86M` parameters.
+
+## Checkpoint Metadata
+
+```text
+file:        weights/elfnet_sad2elf.ckpt
+sha256:      103cd271e736b215fb81cc8232f84b00f8243e9f0872a5704e5e5fdd452e6f51
+source:      /home/aellis/ChiNet/epoch1000.ckpt
+epoch:       999
+global_step: 175000
+format:      PyTorch Lightning checkpoint
+```
+
+Bundled legacy checkpoint hyperparameters:
+
+```yaml
+lambda_vox: 1.0
+lambda_grad: 0.2
+lambda_hist: 0.05
+hist_bins: 30
+hist_sigma: 0.02
+delta: 0.1
+lr: 0.0006
+aux_weight: 0.3
+gamma_w: 2.0
+```
+
+The legacy bundled checkpoint may store the distribution term with histogram
+keys. The loader accepts those names and maps them onto the current CDF term
+for checkpoint compatibility.
+
+Current production training defaults use `lambda_cdf=0.05`, `cdf_bins=64`,
+`cdf_sigma=0.02`, `cdf_tail_start=0.60`, `cdf_tail_weight=2.0`, and
+`cdf_max_voxels=200000`.
+
+## Training And Fine-Tuning Data
+
+Training uses paired NumPy arrays:
 
 ```text
 <stem>_sad.npy
 <stem>_elf.npy
-<stem>_sym.npy
 ```
 
-Run:
+Each pair must have identical full-grid shape. The loader yields complete
+unit-cell grids, not patches. Production training buckets samples by exact
+grid shape, so periodic tiling is normally a no-op inside each batch.
+
+If a dataset also contains `<stem>_sym.npy`, those files are ignored by this
+model family.
+
+Fine-tuning example:
 
 ```bash
-elfnet-train /path/to/triplets --epochs 150 --batch 2
+elfnet-train /path/to/paired_sad_elf_arrays \
+  --epochs 100 \
+  --batch 32 \
+  --batching shape \
+  --val-frac 0.05 \
+  --lr 6e-4 \
+  --lambda-cdf 0.05 \
+  --cdf-bins 64 \
+  --cdf-tail-start 0.6 \
+  --cdf-tail-weight 2.0
 ```
 
-The dataset used with the included checkpoint is available as split GitHub
-release assets. See `DATASET.md` for provenance, statistics, and download
-instructions.
-
-The default training configuration matches the included pretrained model:
-`base=24`, `depth=5`, `blocks_per_stage=1`, `sym_every_stage=True`,
-`lr=3e-4`, and `high_value_weight=5.0`.
-
-## Layout
+## Repository Layout
 
 ```text
-src/elfnet/model.py       periodic symmetry-aware U-Net
-src/elfnet/data.py        SAD/ELF patch datasets and loaders
-src/elfnet/inference.py   POSCAR-to-ELFCAR prediction pipeline
-src/elfnet/checkpoints.py checkpoint metadata and loading helpers
-configs/default.yaml      default model and training configuration
-dataset/                  lightweight dataset manifest and statistics
-weights/                  pretrained checkpoint tracked with Git LFS
-examples/poscars/         small POSCAR example for smoke testing
+src/elfnet/model.py       ELFPredictor and ResidualUNet3D
+src/elfnet/inference.py   POSCAR-to-ELFCAR full-grid inference
+src/elfnet/data.py        full-grid paired SAD/ELF loaders
+src/elfnet/train.py       Lightning trainer for fine-tuning
+weights/                  Git LFS checkpoint
+examples/poscars/         small POSCAR inference example
+dataset/                  dataset metadata and manifest
 ```
 
-See `MODEL_CARD.md` for model details, intended use, and limitations. See
-`DATASET.md` for dataset download and provenance.
+## Limitations
+
+- Predictions are model estimates, not substitutes for converged DFT when
+  high-accuracy electronic structure is required.
+- Direct comparison to VASP ELFCAR files requires both fields on a common grid.
+- The SAD input is a project-defined neutral-density superposition, not VASP's
+  internal `ICHARG=2` charge density.
+- The visually verified ChiNet outputs come from this older full-grid model;
+  they should not be cited as outputs of the later symmetry-aware epoch-114
+  SAD2ELF checkpoint.

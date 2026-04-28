@@ -1,26 +1,51 @@
 checkpoint:
   name: elfnet_sad2elf.ckpt
-  epoch: 114
-  global_step: 499905
-  validation_metric: weighted_smooth_l1
-  validation_score: 0.0088327322
+  source: /home/aellis/ChiNet/epoch1000.ckpt
+  epoch: 999
+  global_step: 175000
+  sha256: 103cd271e736b215fb81cc8232f84b00f8243e9f0872a5704e5e5fdd452e6f51
+  validation_metric: val/l_vox_raw
+  validation_score: 0.0984048
 
 model:
-  sad_idx: 0
-  elf_idx: 1
-  base: 24
-  depth: 5
-  blocks_per_stage: 1
-  dropout: 0.0
-  sym_every_stage: true
-  min_patch_size: 32
+  class_name: ELFPredictor
+  backbone: ResidualUNet3D
+  input_channels: 1
+  output_channels: 1
+  base: 16
+  depth: 4
+  uses_symmetry: false
+  uses_patch_inference: false
+  pad_multiple: 16
 
 loss:
-  high_value_margin: 0.25
-  high_value_weight: 5.0
+  lambda_vox: 1.0
+  lambda_grad: 0.2
+  lambda_cdf: 0.05
+  cdf_bins: 64
+  cdf_sigma: 0.02
+  cdf_tail_start: 0.60
+  cdf_tail_weight: 2.0
+  cdf_max_voxels: 200000
+  delta: 0.1
+  aux_weight: 0.3
+  gamma_w: 2.0
 
 training:
-  lr: 0.0003
+  lr: 0.0006
   weight_decay: 0.0001
-  max_epochs: 501
-  val_metric: loss/vox
+  optimizer: AdamW
+  scheduler: OneCycleLR
+  batch_per_gpu: 32
+  global_batch_8gpu: 256
+  batching: shape
+  max_epochs: 100
+  val_frac: 0.05
+  precision: bf16-mixed
+  data_mode: full_grid_shape_bucketed_sad_elf
+
+inference:
+  encut: 680
+  prec: Accurate
+  mode: full_grid
+  output_prefix: ELFCAR_

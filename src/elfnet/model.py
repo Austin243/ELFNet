@@ -1,31 +1,28 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-SAD-to-ELF periodic, symmetry-aware 3D model.
+"""Full-grid SAD-to-ELF model used for the verified ChiNet predictions.
 
-- Periodic UNet3D backbone (circular padding everywhere).
-- Symmetry pooling via patch-local Seitz {R|t'} using batched grid_sample:
-    zeta_in = S^-1 R^-1 S zeta_out - S^-1 R^-1 t' (mod 1),
-    then rho_in = 2 zeta_in - 1
-  where S = diag(ps/Nx, ps/Ny, ps/Nz) rescales from patch coords to unit-cell fractions.
-- Loss = Smooth L1 (Huber) voxel loss with extra weight on high-value voxels.
-
-The packaged pretrained checkpoint is documented in ``MODEL_CARD.md``.
+The packaged checkpoint is the older ChiNet ``ELFPredictor`` model from
+``/home/aellis/ChiNet/epoch1000.ckpt``. It predicts a full ELF grid from a
+full superposed atomic density (SAD) grid in one forward pass. It does not take
+symmetry operations and it does not run patch inference.
 """
 
 from __future__ import annotations
-import argparse
+
 import inspect
-from dataclasses import dataclass
+import math
 from types import SimpleNamespace
-from typing import Tuple, Optional
+from typing import Any
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.utils.checkpoint import checkpoint as activation_checkpoint
 
 try:
     import lightning as L
+
     _LightningModuleBase = L.LightningModule
 except Exception:
     L = None
@@ -33,14 +30,18 @@ except Exception:
     class _LightningModuleBase(nn.Module):
         """Small inference-only fallback when Lightning is unavailable."""
 
-        def save_hyperparameters(self) -> None:
+        def save_hyperparameters(self, *args: Any, **kwargs: Any) -> None:
+            if args and isinstance(args[0], dict):
+                self.hparams = SimpleNamespace(**args[0])
+                return
             frame = inspect.currentframe()
             if frame is None or frame.f_back is None:
                 self.hparams = SimpleNamespace()
                 return
             values = {
-                k: v for k, v in frame.f_back.f_locals.items()
-                if k != "self" and not k.startswith("_")
+                key: value
+                for key, value in frame.f_back.f_locals.items()
+                if key != "self" and not key.startswith("_")
             }
             self.hparams = SimpleNamespace(**values)
 
@@ -60,443 +61,529 @@ except Exception:
             model.load_state_dict(checkpoint["state_dict"], strict=True)
             return model
 
-from .data import make_patch_loaders
+
+def conv3(ci: int, co: int, k: int = 3, s: int = 1) -> nn.Conv3d:
+    """Circular-padding 3D convolution used throughout the old model."""
+    p = (k - 1) // 2
+    return nn.Conv3d(
+        ci,
+        co,
+        k,
+        s,
+        padding=p,
+        padding_mode="circular",
+        bias=False,
+    )
 
 
-# -------------------------- utilities --------------------------
+class SEBlock(nn.Module):
+    """Squeeze-excitation block for 3D feature maps."""
 
-def _group_norm(ch: int) -> nn.GroupNorm:
-    # 32 groups unless channels are small
-    g = min(32, max(1, ch // 4))
-    return nn.GroupNorm(g, ch)
-
-def periodic_pad3d(x: torch.Tensor, pad: int) -> torch.Tensor:
-    """Apply equal circular padding on all sides."""
-    if pad == 0:
-        return x
-    # PyTorch pad order: (W_left, W_right, H_left, H_right, D_left, D_right)
-    return F.pad(x, (pad, pad, pad, pad, pad, pad), mode="circular")
-
-class PeriodicConv3d(nn.Module):
-    def __init__(self, in_ch, out_ch, k=3, stride=1, bias=True, groups=1):
+    def __init__(self, channels: int, reduction: int = 16):
         super().__init__()
-        assert k % 2 == 1, "Use odd kernels for symmetric padding"
-        self.pad = k // 2
-        self.conv = nn.Conv3d(in_ch, out_ch, kernel_size=k, stride=stride, padding=0,
-                              bias=bias, groups=groups)
+        hidden = max(1, channels // reduction)
+        self.squeeze = nn.AdaptiveAvgPool3d(1)
+        self.excitation = nn.Sequential(
+            nn.Linear(channels, hidden, bias=False),
+            nn.GELU(),
+            nn.Linear(hidden, channels, bias=False),
+            nn.Sigmoid(),
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = periodic_pad3d(x, self.pad)
-        return self.conv(x)
+        batch, channels, _, _, _ = x.shape
+        y = self.squeeze(x).view(batch, channels)
+        y = self.excitation(y).view(batch, channels, 1, 1, 1)
+        return x * y.expand_as(x)
+
+
+class _ChannelAttention3D(nn.Module):
+    def __init__(self, channels: int, reduction: int = 16):
+        super().__init__()
+        hidden = max(1, channels // reduction)
+        self.avg = nn.AdaptiveAvgPool3d(1)
+        self.max = nn.AdaptiveMaxPool3d(1)
+        self.mlp = nn.Sequential(
+            nn.Conv3d(channels, hidden, 1, bias=False),
+            nn.GELU(),
+            nn.Conv3d(hidden, channels, 1, bias=False),
+        )
+        self.sig = nn.Sigmoid()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return x * self.sig(self.mlp(self.avg(x)) + self.mlp(self.max(x)))
+
+
+class _SpatialAttention3D(nn.Module):
+    def __init__(self, kernel_size: int = 3):
+        super().__init__()
+        pad = kernel_size // 2
+        self.conv = nn.Conv3d(2, 1, kernel_size, padding=pad, bias=False)
+        self.sig = nn.Sigmoid()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        avg = x.mean(1, keepdim=True)
+        mx = x.max(1, keepdim=True)[0]
+        att = self.sig(self.conv(torch.cat([avg, mx], 1)))
+        return x * att
+
+
+class CBAM3D(nn.Module):
+    """Channel plus spatial attention at the bottleneck."""
+
+    def __init__(self, channels: int, reduction: int = 16, kernel_size: int = 3):
+        super().__init__()
+        self.ca = _ChannelAttention3D(channels, reduction)
+        self.sa = _SpatialAttention3D(kernel_size)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.sa(self.ca(x))
+
 
 class ResBlock(nn.Module):
-    def __init__(self, ch: int, dropout: float = 0.0):
+    """Residual block with circular convolutions, GroupNorm, GELU, and SE."""
+
+    def __init__(
+        self,
+        channels: int,
+        groups: int = 8,
+        use_checkpoint: bool = False,
+    ):
         super().__init__()
-        self.conv1 = PeriodicConv3d(ch, ch, 3)
-        self.gn1 = _group_norm(ch)
-        self.act1 = nn.GELU()
-        self.drop = nn.Dropout3d(p=dropout) if dropout > 0 else nn.Identity()
-        self.conv2 = PeriodicConv3d(ch, ch, 3)
-        self.gn2 = _group_norm(ch)
-        self.act2 = nn.GELU()
+        group_count = min(groups, channels)
+        self.use_checkpoint = bool(use_checkpoint)
+        self.f = nn.Sequential(
+            conv3(channels, channels),
+            nn.GroupNorm(group_count, channels),
+            nn.GELU(),
+            conv3(channels, channels),
+            nn.GroupNorm(group_count, channels),
+            SEBlock(channels),
+        )
+
+    def _f(self, x: torch.Tensor) -> torch.Tensor:
+        return self.f(x)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        h = self.act1(self.gn1(self.conv1(x)))
-        h = self.drop(h)
-        h = self.gn2(self.conv2(h))
-        return self.act2(h + x)
+        if self.use_checkpoint and self.training and x.requires_grad:
+            y = activation_checkpoint(self._f, x, use_reentrant=False)
+        else:
+            y = self._f(x)
+        return F.gelu(x + y)
+
 
 class Down(nn.Module):
-    def __init__(self, in_ch: int, out_ch: int, blocks: int = 1, dropout: float = 0.0):
+    def __init__(self, ci: int, co: int, use_checkpoint: bool = False):
         super().__init__()
-        self.conv_s2 = PeriodicConv3d(in_ch, out_ch, k=3, stride=2)
-        self.gn = _group_norm(out_ch)
-        self.act = nn.GELU()
-        self.blocks = nn.Sequential(*[ResBlock(out_ch, dropout) for _ in range(blocks)])
+        self.pre = conv3(ci, co, s=2)
+        self.res = ResBlock(co, use_checkpoint=use_checkpoint)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.act(self.gn(self.conv_s2(x)))
-        return self.blocks(x)
+        return self.res(self.pre(x))
+
 
 class Up(nn.Module):
-    def __init__(self, in_ch: int, skip_ch: int, out_ch: int, blocks: int = 1, dropout: float = 0.0):
+    def __init__(
+        self,
+        ci: int,
+        cskip: int,
+        co: int,
+        use_checkpoint: bool = False,
+    ):
         super().__init__()
-        # upsample + periodic conv to keep periodic behavior
-        self.up = nn.Upsample(scale_factor=2, mode="trilinear", align_corners=True)
-        self.conv_up = PeriodicConv3d(in_ch, out_ch, 3)
-        self.blocks = nn.Sequential(*[ResBlock(out_ch + skip_ch, dropout), *[ResBlock(out_ch + skip_ch, dropout) for _ in range(blocks - 1)]])
-        self.merge = PeriodicConv3d(out_ch + skip_ch, out_ch, 3)
-        self.gn = _group_norm(out_ch)
-        self.act = nn.GELU()
+        self.up = nn.ConvTranspose3d(ci, co, 2, stride=2, bias=False)
+        self.res = ResBlock(co + cskip, use_checkpoint=use_checkpoint)
+        self.post = nn.Conv3d(co + cskip, co, 1, bias=False)
 
     def forward(self, x: torch.Tensor, skip: torch.Tensor) -> torch.Tensor:
         x = self.up(x)
-        x = self.conv_up(x)
-        x = torch.cat([x, skip], dim=1)
-        x = self.blocks(x)
-        x = self.act(self.gn(self.merge(x)))
-        return x
+        target = [min(xs, ss) for xs, ss in zip(x.shape[2:], skip.shape[2:])]
+        crop_x = [(size - tgt) // 2 for size, tgt in zip(x.shape[2:], target)]
+        crop_s = [(size - tgt) // 2 for size, tgt in zip(skip.shape[2:], target)]
+        x = x[
+            :,
+            :,
+            crop_x[0] : crop_x[0] + target[0],
+            crop_x[1] : crop_x[1] + target[1],
+            crop_x[2] : crop_x[2] + target[2],
+        ]
+        skip = skip[
+            :,
+            :,
+            crop_s[0] : crop_s[0] + target[0],
+            crop_s[1] : crop_s[1] + target[1],
+            crop_s[2] : crop_s[2] + target[2],
+        ]
+        return self.post(self.res(torch.cat([x, skip], 1)))
 
 
-# -------------------------- symmetry pooling --------------------------
+class ResidualUNet3D(nn.Module):
+    """3D residual U-Net with CBAM bottleneck and auxiliary decoder heads."""
 
-def _wrap01(z: torch.Tensor) -> torch.Tensor:
-    # Wrap to [0,1) in a differentiable way
-    return z - torch.floor(z)
-
-@dataclass
-class SymmAvgConfig:
-    align_corners: bool = True  # keeps integer-grid correspondences exact
-    mode: str = "bilinear"      # 'bilinear' == trilinear for 5D
-    eps: float = 1e-8
-
-class SymmAvg3D(nn.Module):
-    """
-    Average features across per-sample symmetry ops in the patch frame.
-
-    Inputs:
-      f: (B, C, D, H, W)
-      seitz: (B, R, 4, 4)  with integer R and fractional t' for the patch frame
-      mask:  (B, R) bool
-      orig_shape: (B, 3) longs with (NX, NY, NZ)
-
-    Returns:
-      f_sym: (B, C, D, H, W)
-    """
-    def __init__(self, cfg: Optional[SymmAvgConfig] = None):
-        super().__init__()
-        self.cfg = cfg or SymmAvgConfig()
-
-    @staticmethod
-    def _make_base_grid(D: int, H: int, W: int, device, dtype, align_corners: bool) -> torch.Tensor:
-        # Build rho_out in [-1, 1] and corresponding zeta_out = (rho+1)/2 in [0,1]
-        if align_corners:
-            xs = torch.linspace(-1, 1, W, device=device, dtype=dtype)
-            ys = torch.linspace(-1, 1, H, device=device, dtype=dtype)
-            zs = torch.linspace(-1, 1, D, device=device, dtype=dtype)
-        else:
-            # Not used by default, but keep for completeness
-            xs = torch.linspace(-1 + 1/W, 1 - 1/W, W, device=device, dtype=dtype)
-            ys = torch.linspace(-1 + 1/H, 1 - 1/H, H, device=device, dtype=dtype)
-            zs = torch.linspace(-1 + 1/D, 1 - 1/D, D, device=device, dtype=dtype)
-        grid_z, grid_y, grid_x = torch.meshgrid(zs, ys, xs, indexing="ij")  # (D,H,W)
-        rho = torch.stack([grid_x, grid_y, grid_z], dim=-1)  # (D,H,W,3) -> x,y,z order
-        zeta = 0.5 * (rho + 1.0)
-        return rho, zeta  # each (D,H,W,3)
-
-    def forward(self, f: torch.Tensor, seitz: torch.Tensor, mask: torch.Tensor, orig_shape: torch.Tensor) -> torch.Tensor:
-        B, C, D, H, W = f.shape
-        device, dtype = f.device, f.dtype
-        R = seitz.shape[1]
-        assert seitz.shape[-2:] == (4, 4), "seitz must be (B,R,4,4)"
-        assert mask.shape == (B, R)
-
-        # Extract R and t' in float
-        #Rmat = seitz[:, :, :3, :3].to(dtype)    # (B,R,3,3)
-        Rmat = seitz[:, :, :3, :3].to(dtype)    # (B,R,3,3)
-        #tvec = seitz[:, :, :3, 3].to(dtype)     # (B,R,3)
-        tvec = seitz[:, :, :3, 3].to(dtype)     # (B,R,3)
-
-        # S = diag(ps/Nx, ps/Ny, ps/Nz) per sample
-        NXNYNZ = orig_shape.to(dtype)  # (B,3)
-        ps = torch.tensor([W, H, D], dtype=dtype, device=device).flip(0)  # careful with order later if needed
-        # grid_sample expects x=W, y=H, z=D; we map S with ordering (x,y,z)
-        S_diag = torch.stack([
-            (W / NXNYNZ[:, 0]),  # ps/Nx
-            (H / NXNYNZ[:, 1]),  # ps/Ny
-            (D / NXNYNZ[:, 2]),  # ps/Nz
-        ], dim=-1)  # (B,3)
-        S_inv_diag = 1.0 / S_diag  # (B,3)
-
-        # Precompute base grids
-        rho_out, zeta_out = self._make_base_grid(D, H, W, device, dtype, self.cfg.align_corners)  # (D,H,W,3)
-        zeta_out = zeta_out.unsqueeze(0).unsqueeze(0)  # (1,1,D,H,W,3)
-
-        # Build per-(B,R) linear map: Q = S^{-1} R^{-1} S ; d = S^{-1} R^{-1} t'
-        # broadcasting over (B,R)
-        S = torch.diag_embed(S_diag)            # (B,3,3)
-        S_inv = torch.diag_embed(S_inv_diag)    # (B,3,3)
-        S = S[:, None]                          # (B,1,3,3)
-        S_inv = S_inv[:, None]                  # (B,1,3,3)
-
-#        R_inv = torch.linalg.inv(Rmat)          # (B,R,3,3)
-#        Q = S_inv @ R_inv @ S                   # (B,R,3,3)
-#        d = torch.matmul(S_inv @ R_inv, tvec.unsqueeze(-1)).squeeze(-1)  # (B,R,3)
-
-        mask_exp = mask[..., None, None]
-        I3 = torch.eye(3, dtype=dtype, device=device).view(1, 1, 3, 3).expand(B, R, -1, -1)
-        R_eff = torch.where(mask_exp, Rmat, I3)
-        t_eff = torch.where(mask[..., None], tvec, torch.zeros_like(tvec))
-
-        R_inv = R_eff.transpose(-1, -2)
-        Q = S_inv @ R_inv @ S
-        d = torch.matmul(S_inv @ R_inv, t_eff.unsqueeze(-1)).squeeze(-1)
-
-        # Expand and compute zeta_in = wrap(Q zeta_out - d)
-        Qe = Q.view(B * R, 1, 1, 1, 1, 3, 3)
-        de = d.view(B * R, 1, 1, 1, 1, 3)
-        zout = zeta_out.expand(B * R, 1, D, H, W, 3)  # (B*R,1,D,H,W,3)
-        zout_vec = zout.unsqueeze(-1)                 # (B*R,1,D,H,W,3,1)
-        zq = torch.matmul(Qe, zout_vec).squeeze(-1)   # (B*R,1,D,H,W,3)
-        zin = _wrap01(zq - de)                        # (B*R,1,D,H,W,3)
-        grid = 2.0 * zin - 1.0                        # rho_in in [-1,1]
-
-        # Sample and average
-        f_rep = f.repeat_interleave(R, dim=0)         # (B*R,C,D,H,W)
-        grid = grid.view(B * R, D, H, W, 3)
-        f_g = F.grid_sample(
-            f_rep, grid,
-            mode=self.cfg.mode,
-            padding_mode="zeros",  # all points are in [-1,1] after wrap
-            align_corners=self.cfg.align_corners,
-        )                           # (B*R,C,D,H,W)
-        f_g = f_g.view(B, R, C, D, H, W)
-
-        w = mask.to(f_g.dtype)      # (B,R)
-        denom = w.sum(dim=1, keepdim=True).clamp_min(self.cfg.eps)  # (B,1)
-        w = (w / denom).view(B, R, 1, 1, 1, 1)
-        f_avg = (w * f_g).sum(dim=1)  # (B,C,D,H,W)
-        return f_avg
-
-
-# -------------------------- UNet backbone --------------------------
-
-class UNet3DPeriodic(nn.Module):
-    def __init__(self, in_ch: int = 1, base: int = 16, depth: int = 4, blocks_per_stage: int = 1, dropout: float = 0.0,
-                 sym_every_stage: bool = True, min_patch_size: int = 32):
-        super().__init__()
-        assert depth >= 2
-        self.sym_every_stage = sym_every_stage
-        self.sym = SymmAvg3D()
-        self.min_patch_size = int(min_patch_size)
-
-        chs = [base * (2 ** i) for i in range(depth)]
-        self.stem = nn.Sequential(
-            PeriodicConv3d(in_ch, chs[0], 3), _group_norm(chs[0]), nn.GELU(),
-            *[ResBlock(chs[0], dropout) for _ in range(blocks_per_stage)]
-        )
-        self.downs = nn.ModuleList()
-        for i in range(depth - 1):
-            self.downs.append(Down(chs[i], chs[i + 1], blocks=blocks_per_stage, dropout=dropout))
-
-        self.ups = nn.ModuleList()
-        for i in reversed(range(depth - 1)):
-            self.ups.append(Up(chs[i + 1], chs[i], chs[i], blocks=blocks_per_stage, dropout=dropout))
-
-        self.head = nn.Sequential(
-            PeriodicConv3d(chs[0], chs[0], 3), _group_norm(chs[0]), nn.GELU(),
-            PeriodicConv3d(chs[0], 1, 1),
-        )
-        self._min_spatial = 2 ** len(self.downs)
-
-    def forward(self, x: torch.Tensor, seitz: torch.Tensor, mask: torch.Tensor, orig_shape: torch.Tensor) -> torch.Tensor:
-        self._validate_spatial_dims(x)
-        # Optional symmetry pooling at input
-        x = self.sym(x, seitz, mask, orig_shape)
-
-        # Encoder
-        xs = []
-        x = self.stem(x)
-        if self.sym_every_stage:
-            x = self.sym(x, seitz, mask, orig_shape)
-        xs.append(x)
-        for d in self.downs:
-            x = d(x)
-            if self.sym_every_stage:
-                x = self.sym(x, seitz, mask, orig_shape)
-            xs.append(x)
-
-        # Decoder with skips
-        for up in self.ups:
-            skip = xs.pop(-2)  # last encoder activation (excluding current x)
-            x = up(x, skip)
-            if self.sym_every_stage:
-                x = self.sym(x, seitz, mask, orig_shape)
-
-        y = self.head(x)
-        y = torch.clamp(y, 0.0, 1.0)
-        return y
-
-    def _validate_spatial_dims(self, x: torch.Tensor) -> None:
-        if x.dim() < 5:
-            raise ValueError("UNet3DPeriodic expects inputs shaped (B,C,D,H,W)")
-        d, h, w = (int(x.size(-3)), int(x.size(-2)), int(x.size(-1)))
-        if min(d, h, w) < self.min_patch_size:
-            raise ValueError(
-                f"input spatial dims {(d, h, w)} must each be >= {self.min_patch_size}"
-            )
-        if any(dim % self._min_spatial != 0 for dim in (d, h, w)):
-            raise ValueError(
-                f"input spatial dims {(d, h, w)} must be divisible by {self._min_spatial} for depth={len(self.downs)+1}"
-            )
-
-
-# -------------------------- Lightning module --------------------------
-
-class Sad2ElfLitModule(_LightningModuleBase):
     def __init__(
         self,
-        sad_idx: int = 0,
-        elf_idx: int = 1,
+        in_ch: int = 1,
         base: int = 16,
         depth: int = 4,
-        blocks_per_stage: int = 1,
-        dropout: float = 0.0,
-        sym_every_stage: bool = True,
-        lr: float = 3e-4,
-        weight_decay: float = 1e-4,
-        max_epochs: int = 500,
-        high_value_margin: float = 0.25,
-        high_value_weight: float = 5.0,
-        min_patch_size: int = 32,
-        val_metric: str = "loss/vox",
+        use_checkpoint: bool = False,
     ):
         super().__init__()
-        self.save_hyperparameters()
-
-        self.net = UNet3DPeriodic(
-            in_ch=1,
-            base=base,
-            depth=depth,
-            blocks_per_stage=blocks_per_stage,
-            dropout=dropout,
-            sym_every_stage=sym_every_stage,
-            min_patch_size=min_patch_size,
+        widths = [base * 2**i for i in range(depth)]
+        self.stem = nn.Sequential(
+            conv3(in_ch, base),
+            ResBlock(base, use_checkpoint=use_checkpoint),
         )
+        self.enc = nn.ModuleList(
+            [
+                Down(widths[i - 1] if i else base, width, use_checkpoint)
+                for i, width in enumerate(widths)
+            ]
+        )
+        bot_ch = widths[-1] * 2
+        self.bot = nn.Sequential(
+            conv3(widths[-1], bot_ch),
+            ResBlock(bot_ch, use_checkpoint=use_checkpoint),
+            ResBlock(bot_ch, use_checkpoint=use_checkpoint),
+            CBAM3D(bot_ch),
+        )
+        skip_ch = ([base] + widths[:-1])[::-1]
+        dec_in_ch = [bot_ch] + skip_ch[:-1]
+        self.dec = nn.ModuleList(
+            [
+                Up(ci, cs, cs, use_checkpoint=use_checkpoint)
+                for ci, cs in zip(dec_in_ch, skip_ch)
+            ]
+        )
+        self.head = nn.Sequential(nn.Conv3d(skip_ch[-1], 1, 1), nn.Sigmoid())
+        self.aux_heads = nn.ModuleList(
+            [nn.Sequential(nn.Conv3d(c, 1, 1), nn.Sigmoid()) for c in skip_ch[:-1]]
+        )
+        self.apply(self._init_weights)
 
-        self.vox_loss = nn.SmoothL1Loss(reduction="none")
-        self.high_value_margin = float(high_value_margin)
-        self.high_value_weight = float(high_value_weight)
-        self.weight_eps = 1e-6
+    @staticmethod
+    def _init_weights(module: nn.Module) -> None:
+        if isinstance(module, nn.Conv3d):
+            nn.init.kaiming_normal_(module.weight, mode="fan_out", nonlinearity="relu")
 
-        self.lr = lr
-        self.weight_decay = weight_decay
-        self.max_epochs_cfg = max_epochs
-        self.min_patch_size = int(min_patch_size)
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, list[torch.Tensor]]:
+        skips = []
+        x = self.stem(x)
+        skips.append(x)
+        for block in self.enc:
+            x = block(x)
+            skips.append(x)
 
-    def forward(self, x_sad: torch.Tensor, seitz: torch.Tensor, mask: torch.Tensor, orig_shape: torch.Tensor) -> torch.Tensor:
-        return self.net(x_sad, seitz, mask, orig_shape)
+        x = self.bot(skips.pop())
+        aux_preds = []
+        for idx, (block, skip) in enumerate(zip(self.dec, reversed(skips))):
+            x = block(x, skip)
+            if idx < len(self.aux_heads):
+                aux_preds.append(self.aux_heads[idx](x))
 
-    def _split_xy(self, X: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        assert X.dim() == 5
-        sad = X[:, self.hparams.sad_idx:self.hparams.sad_idx + 1]
-        elf = X[:, self.hparams.elf_idx:self.hparams.elf_idx + 1]
-        return sad, elf
+        main_pred = self.head(x)
+        return main_pred, aux_preds
 
-    def _importance_weights(self, target: torch.Tensor):
-        B = target.shape[0]
-        flat = target.view(B, -1)
-        max_vals = flat.max(dim=1).values.view(B, 1, 1, 1, 1)
-        threshold = (max_vals - self.high_value_margin).clamp_min(0.0)
-        high_mask = target >= threshold
-        high_weight = target.new_tensor(self.high_value_weight)
-        weights = torch.ones_like(target)
-        weights = torch.where(high_mask, high_weight, weights)
-        return weights, high_mask
 
-    def _loss(self, pred: torch.Tensor, target: torch.Tensor):
-        weights, high_mask = self._importance_weights(target)
-        loss_map = self.vox_loss(pred, target)
-        weighted = (loss_map * weights).view(loss_map.size(0), -1).sum(dim=1)
-        denom = weights.view(weights.size(0), -1).sum(dim=1).clamp_min(self.weight_eps)
-        loss = (weighted / denom).mean()
-        high_frac = high_mask.float().mean()
-        logs = {"loss/vox": loss, "stats/high_frac": high_frac}
+class ELFPredictor(_LightningModuleBase):
+    """Full-grid ELF predictor used by ``epoch1000.ckpt``.
+
+    The constructor accepts both the public ASCII hyperparameter names and the
+    legacy checkpoint keys from ChiNet, including ``"lambda1"``, ``"lambdag"``,
+    ``"lambda_hist"``, and the original Greek-key variants. ``eta_hist`` is
+    kept as the state-dict parameter name for checkpoint compatibility, but it
+    now weights the soft CDF distribution loss.
+    """
+
+    def __init__(
+        self,
+        lambda_vox: float = 1.0,
+        lambda_grad: float = 0.20,
+        lambda_cdf: float | None = None,
+        lambda_hist: float | None = None,
+        cdf_bins: int = 64,
+        cdf_sigma: float = 0.02,
+        cdf_tail_start: float = 0.60,
+        cdf_tail_weight: float = 2.0,
+        cdf_max_voxels: int = 200_000,
+        hist_bins: int | None = None,
+        hist_sigma: float | None = None,
+        delta: float = 0.1,
+        lr: float = 6e-4,
+        aux_weight: float = 0.3,
+        gamma_w: float = 2.0,
+        weight_decay: float = 1e-4,
+        base: int = 16,
+        depth: int = 4,
+        in_ch: int = 1,
+        use_checkpoint: bool = False,
+        **legacy_hparams: Any,
+    ):
+        super().__init__()
+        lambda_vox = float(
+            legacy_hparams.pop("lambda1", legacy_hparams.pop("\u03bb1", lambda_vox))
+        )
+        lambda_grad = float(
+            legacy_hparams.pop("lambdag", legacy_hparams.pop("\u03bbg", lambda_grad))
+        )
+        legacy_lambda_hist = legacy_hparams.pop(
+            "lambda_hist",
+            legacy_hparams.pop("\u03bb_hist", None),
+        )
+        legacy_lambda_cdf = legacy_hparams.pop("lambda_cdf", None)
+        if lambda_cdf is None:
+            if legacy_lambda_cdf is not None:
+                lambda_cdf = float(legacy_lambda_cdf)
+            elif lambda_hist is not None:
+                lambda_cdf = float(lambda_hist)
+            elif legacy_lambda_hist is not None:
+                lambda_cdf = float(legacy_lambda_hist)
+            else:
+                lambda_cdf = 0.05
+        if hist_bins is not None:
+            cdf_bins = int(hist_bins)
+        if hist_sigma is not None:
+            cdf_sigma = float(hist_sigma)
+        hparams = {
+            "lambda_vox": lambda_vox,
+            "lambda_grad": lambda_grad,
+            "lambda_cdf": float(lambda_cdf),
+            "lambda_hist": float(lambda_cdf),
+            "cdf_bins": int(cdf_bins),
+            "cdf_sigma": float(cdf_sigma),
+            "cdf_tail_start": float(cdf_tail_start),
+            "cdf_tail_weight": float(cdf_tail_weight),
+            "cdf_max_voxels": int(cdf_max_voxels),
+            "hist_bins": int(cdf_bins),
+            "hist_sigma": float(cdf_sigma),
+            "delta": float(delta),
+            "lr": float(lr),
+            "aux_weight": float(aux_weight),
+            "gamma_w": float(gamma_w),
+            "weight_decay": float(weight_decay),
+            "base": int(base),
+            "depth": int(depth),
+            "in_ch": int(in_ch),
+            "use_checkpoint": bool(use_checkpoint),
+        }
+        hparams.update(legacy_hparams)
+        try:
+            self.save_hyperparameters(hparams)
+        except TypeError:
+            self.hparams = SimpleNamespace(**hparams)
+
+        self.net = ResidualUNet3D(
+            in_ch=int(in_ch),
+            base=int(base),
+            depth=int(depth),
+            use_checkpoint=bool(use_checkpoint),
+        )
+        self.eta_vox = nn.Parameter(torch.tensor(math.log(1.0 / lambda_vox)))
+        self.eta_grad = nn.Parameter(torch.tensor(math.log(1.0 / lambda_grad)))
+        self.eta_hist = nn.Parameter(torch.tensor(math.log(1.0 / float(lambda_cdf))))
+        torch.backends.cuda.matmul.allow_tf32 = True
+
+    @staticmethod
+    def _to_multiple_of_16(dim: int) -> int:
+        return (int(dim) + 15) // 16 * 16
+
+    def _pad16(self, volume: torch.Tensor) -> tuple[torch.Tensor, tuple[int, int, int]]:
+        d, h, w = volume.shape[-3:]
+        dm, hm, wm = map(self._to_multiple_of_16, (d, h, w))
+        pad = (0, wm - w, 0, hm - h, 0, dm - d)
+        return F.pad(volume, pad, mode="circular"), (int(d), int(h), int(w))
+
+    @staticmethod
+    def _gradient(volume: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        dz = F.pad(volume[:, :, 1:, :, :] - volume[:, :, :-1, :, :], (0, 0, 0, 0, 1, 0))
+        dy = F.pad(volume[:, :, :, 1:, :] - volume[:, :, :, :-1, :], (0, 0, 1, 0, 0, 0))
+        dx = F.pad(volume[:, :, :, :, 1:] - volume[:, :, :, :, :-1], (1, 0, 0, 0, 0, 0))
+        return dz, dy, dx
+
+    def _soft_cdf_loss(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        """Approximate 1D Wasserstein distance between ELF value distributions.
+
+        The CDF at each threshold is smoothed with a sigmoid kernel so gradients
+        flow to voxel values. High-ELF thresholds are upweighted because missed
+        localization peaks are usually more important than small low-ELF shifts.
+        """
+        bins = int(self.hparams.cdf_bins)
+        sigma = max(float(self.hparams.cdf_sigma), 1e-4)
+        max_voxels = int(self.hparams.cdf_max_voxels)
+        pred_flat = pred.reshape(-1).float()
+        target_flat = target.reshape(-1).float()
+        if max_voxels > 0 and pred_flat.numel() > max_voxels:
+            idx = torch.linspace(
+                0,
+                pred_flat.numel() - 1,
+                max_voxels,
+                device=pred_flat.device,
+            ).long()
+            pred_flat = pred_flat.index_select(0, idx)
+            target_flat = target_flat.index_select(0, idx)
+
+        thresholds = torch.linspace(
+            0.0,
+            1.0,
+            bins + 2,
+            device=pred_flat.device,
+            dtype=pred_flat.dtype,
+        )[1:-1]
+        pred_cdf = torch.sigmoid((thresholds[None, :] - pred_flat[:, None]) / sigma).mean(0)
+        target_cdf = torch.sigmoid((thresholds[None, :] - target_flat[:, None]) / sigma).mean(0)
+
+        tail_start = float(self.hparams.cdf_tail_start)
+        tail_weight = float(self.hparams.cdf_tail_weight)
+        if tail_weight != 1.0 and tail_start < 1.0:
+            tail = ((thresholds - tail_start) / max(1.0 - tail_start, 1e-6)).clamp(0.0, 1.0)
+            weights = 1.0 + (tail_weight - 1.0) * tail
+        else:
+            weights = torch.ones_like(thresholds)
+        return (torch.abs(pred_cdf - target_cdf) * weights).sum() / weights.sum().clamp_min(1e-12)
+
+    def forward(self, sad: torch.Tensor) -> tuple[torch.Tensor, list[torch.Tensor]]:
+        sad_padded, orig_shape = self._pad16(sad)
+        main_padded, aux_padded = self.net(sad_padded)
+        d, h, w = orig_shape
+        main = main_padded[..., :d, :h, :w]
+        aux = [pred[..., :d, :h, :w] for pred in aux_padded]
+        return main, aux
+
+    def predict_elf(self, sad: torch.Tensor) -> torch.Tensor:
+        """Return only the main ELF prediction for a full SAD grid."""
+        pred, _ = self(sad)
+        return pred
+
+    def _loss_and_logs(self, sad: torch.Tensor, elf: torch.Tensor) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+        main, aux = self(sad)
+        with torch.no_grad():
+            denom = sad.max().clamp_min(1e-12)
+            weights = (1.0 - sad / denom).clamp(min=0)
+            weights = weights.pow(float(self.hparams.gamma_w))
+            weights = weights / weights.mean().clamp_min(1e-12)
+
+        diff_main_weighted = F.smooth_l1_loss(
+            main,
+            elf,
+            beta=float(self.hparams.delta),
+            reduction="none",
+        )
+        l_vox_main = (diff_main_weighted * weights).sum() / weights.sum().clamp_min(1e-12)
+        l_vox_main_raw = F.smooth_l1_loss(main, elf, beta=float(self.hparams.delta))
+
+        l_vox_aux = torch.zeros((), dtype=main.dtype, device=main.device)
+        l_vox_aux_raw = torch.zeros((), dtype=main.dtype, device=main.device)
+        for pred in aux:
+            pred_up = F.interpolate(
+                pred,
+                size=elf.shape[-3:],
+                mode="trilinear",
+                align_corners=False,
+            )
+            diff_aux = F.smooth_l1_loss(
+                pred_up,
+                elf,
+                beta=float(self.hparams.delta),
+                reduction="none",
+            )
+            l_vox_aux = l_vox_aux + (diff_aux * weights).sum() / weights.sum().clamp_min(1e-12)
+            l_vox_aux_raw = l_vox_aux_raw + F.smooth_l1_loss(
+                pred_up,
+                elf,
+                beta=float(self.hparams.delta),
+            )
+        l_vox = l_vox_main + float(self.hparams.aux_weight) * l_vox_aux / max(len(aux), 1)
+        l_vox_raw = l_vox_main_raw + float(self.hparams.aux_weight) * l_vox_aux_raw / max(len(aux), 1)
+
+        gp = self._gradient(main + 1e-6)
+        gt = self._gradient(elf + 1e-6)
+        wz = weights * weights.roll(-1, dims=2)
+        wy = weights * weights.roll(-1, dims=3)
+        wx = weights * weights.roll(-1, dims=4)
+        l_grad = (
+            (torch.abs(gp[0] - gt[0]) * wz).sum() / wz.sum().clamp_min(1e-12)
+            + (torch.abs(gp[1] - gt[1]) * wy).sum() / wy.sum().clamp_min(1e-12)
+            + (torch.abs(gp[2] - gt[2]) * wx).sum() / wx.sum().clamp_min(1e-12)
+        ) / 3.0
+        l_grad_raw = sum(F.l1_loss(a, b) for a, b in zip(gp, gt)) / 3.0
+
+        l_cdf = self._soft_cdf_loss(main, elf)
+        weighted_vox = l_vox * torch.exp(-self.eta_vox) + self.eta_vox
+        weighted_grad = l_grad * torch.exp(-self.eta_grad) + self.eta_grad
+        weighted_cdf = l_cdf * torch.exp(-self.eta_hist) + self.eta_hist
+        loss = weighted_vox + weighted_grad + weighted_cdf
+        logs = {
+            "l_vox_raw": l_vox_raw,
+            "l_grad_raw": l_grad_raw,
+            "l_cdf_raw": l_cdf,
+        }
         return loss, logs
 
-    def training_step(self, batch, batch_idx):
-        X, seitz, mask, origins, shapes, stems = batch
-        x_sad, y_elf = self._split_xy(X)
-        y_pred = self.forward(x_sad, seitz, mask, shapes)
-        loss, logs = self._loss(y_pred, y_elf)
-        self.log("train/loss", loss, prog_bar=True, on_step=True, on_epoch=True, batch_size=X.size(0))
-        self.log_dict({f"train/{k}": v for k, v in logs.items()}, on_step=True, on_epoch=True, batch_size=X.size(0))
+    def _loss(self, sad: torch.Tensor, elf: torch.Tensor) -> torch.Tensor:
+        loss, _ = self._loss_and_logs(sad, elf)
         return loss
 
-    def validation_step(self, batch, batch_idx):
-        X, seitz, mask, origins, shapes, stems = batch
-        x_sad, y_elf = self._split_xy(X)
-        with torch.no_grad():
-            y_pred = self.forward(x_sad, seitz, mask, shapes)
-        loss, logs = self._loss(y_pred, y_elf)
-        self.log("val/loss", loss, prog_bar=True, on_epoch=True, batch_size=X.size(0))
-        self.log_dict({f"val/{k}": v for k, v in logs.items()}, on_epoch=True, batch_size=X.size(0))
+    def _raw_losses(self, sad: torch.Tensor, elf: torch.Tensor) -> dict[str, torch.Tensor]:
+        _, logs = self._loss_and_logs(sad, elf)
+        return logs
+
+    def training_step(self, batch, _):
+        sad, elf = batch
+        loss, logs = self._loss_and_logs(sad, elf)
+        self.log("train/loss", loss, on_step=True, prog_bar=True)
+        for key, value in logs.items():
+            self.log(f"train/{key}", value, on_epoch=True, sync_dist=True)
+        self.log("train/eta_vox", self.eta_vox.detach(), on_epoch=True, sync_dist=True)
+        self.log("train/eta_grad", self.eta_grad.detach(), on_epoch=True, sync_dist=True)
+        self.log("train/eta_cdf", self.eta_hist.detach(), on_epoch=True, sync_dist=True)
+        self.log("train/eff_weight_vox", torch.exp(-self.eta_vox).detach(), on_epoch=True, sync_dist=True)
+        self.log("train/eff_weight_grad", torch.exp(-self.eta_grad).detach(), on_epoch=True, sync_dist=True)
+        self.log("train/eff_weight_cdf", torch.exp(-self.eta_hist).detach(), on_epoch=True, sync_dist=True)
+        return loss
+
+    def validation_step(self, batch, _):
+        sad, elf = batch
+        loss, logs = self._loss_and_logs(sad, elf)
+        self.log("val/loss", loss, prog_bar=True, sync_dist=True)
+        for key, value in logs.items():
+            self.log(f"val/{key}", value, on_epoch=True, sync_dist=True)
+        self.log("val/eta_vox", self.eta_vox.detach(), on_epoch=True, sync_dist=True)
+        self.log("val/eta_grad", self.eta_grad.detach(), on_epoch=True, sync_dist=True)
+        self.log("val/eta_cdf", self.eta_hist.detach(), on_epoch=True, sync_dist=True)
+        self.log("val/eff_weight_vox", torch.exp(-self.eta_vox).detach(), on_epoch=True, sync_dist=True)
+        self.log("val/eff_weight_grad", torch.exp(-self.eta_grad).detach(), on_epoch=True, sync_dist=True)
+        self.log("val/eff_weight_cdf", torch.exp(-self.eta_hist).detach(), on_epoch=True, sync_dist=True)
+        return loss
 
     def configure_optimizers(self):
-        opt = torch.optim.AdamW(self.parameters(), lr=self.lr, weight_decay=self.weight_decay)
-        sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=self.max_epochs_cfg)
-        return {"optimizer": opt, "lr_scheduler": {"scheduler": sched, "interval": "epoch"}}
+        opt = torch.optim.AdamW(
+            self.parameters(),
+            lr=float(self.hparams.lr),
+            betas=(0.9, 0.999),
+            eps=1e-4,
+            weight_decay=float(self.hparams.weight_decay),
+        )
+        try:
+            total_steps = getattr(self.trainer, "estimated_stepping_batches", None) or 1000
+        except RuntimeError:
+            total_steps = 1000
+        sched = torch.optim.lr_scheduler.OneCycleLR(
+            opt,
+            max_lr=float(self.hparams.lr),
+            pct_start=0.3,
+            total_steps=total_steps,
+            cycle_momentum=False,
+        )
+        return {
+            "optimizer": opt,
+            "lr_scheduler": {"scheduler": sched, "interval": "step"},
+        }
 
 
-def parse_args():
-    p = argparse.ArgumentParser(description="Train SAD-to-ELF symmetry-aware periodic UNet on patches")
-    p.add_argument("root", type=str, help="Dataset root directory with *_sad.npy, *_elf.npy, *_sym.npy")
-    p.add_argument("--patch-size", type=int, default=32, help="Patch edge length (must match loader)")
-    p.add_argument("--batch-size", type=int, default=2)
-    p.add_argument("--val-fraction", type=float, default=0.1)
-    p.add_argument("--channels", type=str, default="sad,elf", help="Loader channels; include both to supply target")
-    p.add_argument("--sad-idx", type=int, default=0, help="Index of SAD channel in X")
-    p.add_argument("--elf-idx", type=int, default=1, help="Index of ELF channel in X")
-    p.add_argument("--base", type=int, default=24)
-    p.add_argument("--depth", type=int, default=5)
-    p.add_argument("--blocks-per-stage", type=int, default=1)
-    p.add_argument("--dropout", type=float, default=0.0)
-    p.add_argument("--no-sym-every-stage", dest="sym_every_stage", action="store_false",
-                   help="Disable symmetry pooling after each stage")
-    p.set_defaults(sym_every_stage=True)
-    p.add_argument("--lr", type=float, default=3e-4)
-    p.add_argument("--weight-decay", type=float, default=1e-4)
-    p.add_argument("--max-epochs", type=int, default=500)
-    p.add_argument("--high-value-margin", type=float, default=0.25, help="Margin below max ELF treated as high-value")
-    p.add_argument("--high-value-weight", type=float, default=5.0, help="Importance weight for high-value voxels")
-    p.add_argument("--num-workers", type=int, default=None)
-    p.add_argument("--precision", type=str, default="32", choices=["16-mixed", "32", "bf16-mixed"])
-    p.add_argument("--grad-clip", type=float, default=1.0)
-    p.add_argument("--seed", type=int, default=17)
-    return p.parse_args()
+def build_model(**kwargs) -> ELFPredictor:
+    """Convenience factory retained for external scripts."""
+    return ELFPredictor(**kwargs)
 
-def main():
-    args = parse_args()
-    L.seed_everything(args.seed, workers=True)
 
-    chans = tuple([c.strip() for c in args.channels.split(",") if c.strip()])
-    if "sad" not in chans or "elf" not in chans:
-        raise ValueError("--channels must include both 'sad' and 'elf' so the model gets target data")
-
-    train_loader, val_loader = make_patch_loaders(
-        root=args.root,
-        patch_size=args.patch_size,
-        batch_size=args.batch_size,
-        val_fraction=args.val_fraction,
-        channels=chans,
-        num_workers=args.num_workers
-    )
-
-    model = Sad2ElfLitModule(
-        sad_idx=args.sad_idx,
-        elf_idx=args.elf_idx,
-        base=args.base,
-        depth=args.depth,
-        blocks_per_stage=args.blocks_per_stage,
-        dropout=args.dropout,
-        sym_every_stage=args.sym_every_stage,
-        lr=args.lr,
-        weight_decay=args.weight_decay,
-        max_epochs=args.max_epochs,
-        high_value_margin=args.high_value_margin,
-        high_value_weight=args.high_value_weight,
-    )
-
-    # Trainer
-    trainer = L.Trainer(
-        max_epochs=args.max_epochs,
-        precision=args.precision,
-        gradient_clip_val=args.grad_clip,
-        log_every_n_steps=50,
-        enable_progress_bar=True,
-    )
-
-    trainer.fit(model, train_dataloaders=train_loader, val_dataloaders=val_loader)
-
-if __name__ == "__main__":
-    main()
+# Backward-compatible aliases for older imports from the previous public repo.
+Sad2ElfLitModule = ELFPredictor
+UNet3DPeriodic = ResidualUNet3D
