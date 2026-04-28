@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""POSCAR-to-ELFCAR inference for the full-grid ELFNet checkpoint.
+"""POSCAR-to-ELFCAR inference for full-grid ELFNet checkpoints.
 
-The bundled checkpoint is the verified ChiNet ``epoch1000.ckpt`` model. The
-pipeline mirrors the old ChiNet inference path that produced the current
-``ChiNet/outputs`` files:
+The repository does not bundle weights. Pass a checkpoint path, set
+``ELFNET_CHECKPOINT``, or place a local checkpoint under ``weights/``. The
+pipeline:
 
 1. parse ``POSCAR_*`` files,
 2. build a full superposed atomic density (SAD) grid,
@@ -144,7 +144,7 @@ def get_grid_sizes(
     encut_ev: float = 680,
     prec: str = "Accurate",
 ) -> tuple[int, int, int]:
-    """Old ChiNet VASP-like grid estimate, rounded to multiples of 16."""
+    """VASP-like grid estimate, rounded to multiples of 16."""
     f_prec = {
         "accurate": 2.0,
         "high": 2.0,
@@ -209,7 +209,7 @@ def build_sad(
     neutral_dir: Path,
     valence: Dict[str, float] | None = None,
 ) -> np.ndarray:
-    """Build the project SAD grid in the same convention as old ChiNet."""
+    """Build the project SAD grid used by ELFNet."""
     valence = DEFAULT_VALENCE if valence is None else valence
     sad = np.zeros(shape, dtype=np.float64)
     idx = 0
@@ -371,7 +371,8 @@ def build_parser() -> argparse.ArgumentParser:
         nargs="+",
         help=(
             "Either CHECKPOINT INPUTS OUTPUTS or INPUTS OUTPUTS. "
-            "When CHECKPOINT is omitted, ELFNET_CHECKPOINT or weights/elfnet_sad2elf.ckpt is used."
+            "When CHECKPOINT is omitted, ELFNET_CHECKPOINT or a local "
+            "weights/elfnet.ckpt file is used."
         ),
     )
     parser.add_argument("--neutral-dir", type=Path, default=None, help="Folder with neutral density .pkl files")

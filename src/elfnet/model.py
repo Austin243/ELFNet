@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Full-grid SAD-to-ELF model used for the verified ChiNet predictions.
+"""Full-grid SAD-to-ELF model.
 
-The packaged checkpoint is the older ChiNet ``ELFPredictor`` model from
-``/home/aellis/ChiNet/epoch1000.ckpt``. It predicts a full ELF grid from a
-full superposed atomic density (SAD) grid in one forward pass. It does not take
-symmetry operations and it does not run patch inference.
+``ELFPredictor`` predicts a full ELF grid from a full superposed atomic
+density (SAD) grid in one forward pass. It does not take symmetry operations
+and it does not run patch inference.
 """
 
 from __future__ import annotations
@@ -285,10 +284,10 @@ class ResidualUNet3D(nn.Module):
 
 
 class ELFPredictor(_LightningModuleBase):
-    """Full-grid ELF predictor used by ``epoch1000.ckpt``.
+    """Full-grid ELF predictor.
 
     The constructor accepts both the public ASCII hyperparameter names and the
-    legacy checkpoint keys from ChiNet, including ``"lambda1"``, ``"lambdag"``,
+    legacy checkpoint keys, including ``"lambda1"``, ``"lambdag"``,
     ``"lambda_hist"``, and the original Greek-key variants. ``eta_hist`` is
     kept as the state-dict parameter name for checkpoint compatibility, but it
     now weights the soft CDF distribution loss.

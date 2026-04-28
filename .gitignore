@@ -28,7 +28,6 @@ wandb/
 weights/*.ckpt
 weights/*.pt
 weights/*.pth
-!weights/elfnet_sad2elf.ckpt
 !weights/README.md
 
 # Platform/editor files
