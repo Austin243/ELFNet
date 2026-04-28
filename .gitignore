@@ -26,7 +26,7 @@ outputs/
 lightning_logs/
 wandb/
 
-# Large model artifacts. Track release checkpoints explicitly with Git LFS.
+# Model artifacts. Track checkpoints with Git LFS when added.
 weights/*.ckpt
 weights/*.pt
 weights/*.pth
