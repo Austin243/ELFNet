@@ -1,3 +1,7 @@
 *.ckpt filter=lfs diff=lfs merge=lfs -text
 *.pt filter=lfs diff=lfs merge=lfs -text
 *.pth filter=lfs diff=lfs merge=lfs -text
+release/**/*.tar.zst filter=lfs diff=lfs merge=lfs -text
+release/**/*.tar.zst.part-* filter=lfs diff=lfs merge=lfs -text
+release/**/archive-file-list.txt filter=lfs diff=lfs merge=lfs -text
+release/**/*.tsv filter=lfs diff=lfs merge=lfs -text

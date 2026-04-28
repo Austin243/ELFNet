@@ -64,6 +64,16 @@ Key details:
 
 The default production configuration has about `10.86M` parameters.
 
+
+## Large Data Releases
+
+Large datasets are distributed as Git LFS archive assets under `release/`.
+The current layout is documented in `DATA_RELEASES.md`:
+
+- `dataset-v1`: 77,279 A/AB sweep SAD/ELF/symmetry triplets.
+- `pressure-triplets-326k-v1`: 326,009 SAD/ELF/symmetry triplets for training.
+- `dft-reference-elfs-75k-v1`: 75,000 selected DFT reference ELFCAR files for the ChiNet epoch1000 best-75k analysis.
+
 ## Training And Fine-Tuning Data
 
 Training uses paired NumPy arrays:

@@ -11,12 +11,14 @@ venv/
 # Build artifacts
 build/
 dist/
-release/
 *.tar
 *.tar.zst
 *.tar.gz
 *.part-*
 SHA256SUMS
+!release/**/*.tar.zst.part-*
+!release/**/SHA256SUMS
+!release/**/SHA256SUMS.full
 
 # Local outputs
 runs/
