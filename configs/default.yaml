@@ -1,11 +1,6 @@
 checkpoint:
-  name: elfnet_sad2elf.ckpt
-  source: /home/aellis/ChiNet/epoch1000.ckpt
-  epoch: 999
-  global_step: 175000
-  sha256: 103cd271e736b215fb81cc8232f84b00f8243e9f0872a5704e5e5fdd452e6f51
-  validation_metric: val/l_vox_raw
-  validation_score: 0.0984048
+  bundled: false
+  default_name: elfnet.ckpt
 
 model:
   class_name: ELFPredictor

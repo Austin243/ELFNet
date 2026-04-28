@@ -1,4 +1,4 @@
-"""Checkpoint metadata and loading helpers."""
+"""Checkpoint resolution and loading helpers."""
 
 from __future__ import annotations
 
@@ -7,25 +7,8 @@ from pathlib import Path
 from typing import Any
 
 DEFAULT_CHECKPOINT = {
-    "name": "elfnet_sad2elf.ckpt",
-    "source": "/home/aellis/ChiNet/epoch1000.ckpt",
-    "epoch": 999,
-    "global_step": 175000,
-    "model_class": "ELFPredictor",
-    "architecture": "ResidualUNet3D",
-    "validation_metric": "val/l_vox_raw",
-    "validation_score": 0.0984048,
-    "hparams": {
-        "lambda_vox": 1.0,
-        "lambda_grad": 0.2,
-        "lambda_hist": 0.05,
-        "hist_bins": 30,
-        "hist_sigma": 0.02,
-        "delta": 0.1,
-        "lr": 6e-4,
-        "aux_weight": 0.3,
-        "gamma_w": 2.0,
-    },
+    "name": "elfnet.ckpt",
+    "bundled": False,
     "production_training_hparams": {
         "lambda_vox": 1.0,
         "lambda_grad": 0.2,
@@ -44,7 +27,7 @@ DEFAULT_CHECKPOINT = {
 
 
 def resolve_checkpoint(path: str | Path | None = None) -> Path:
-    """Resolve a checkpoint path from an explicit path, env var, or weights dir."""
+    """Resolve a checkpoint path from an explicit path, env var, or local weights dir."""
     candidates: list[Path] = []
     if path is not None:
         candidates.append(Path(path).expanduser())
@@ -67,8 +50,9 @@ def resolve_checkpoint(path: str | Path | None = None) -> Path:
 
     checked = "\n".join(f"  - {candidate}" for candidate in candidates)
     raise FileNotFoundError(
-        "ELFNet checkpoint not found. Pass a checkpoint path, set ELFNET_CHECKPOINT, "
-        "or place the file at weights/elfnet_sad2elf.ckpt.\n"
+        "ELFNet does not currently bundle a checkpoint. Pass a checkpoint path, "
+        "set ELFNET_CHECKPOINT, or place a local checkpoint at "
+        "weights/elfnet.ckpt.\n"
         f"Checked:\n{checked}"
     )
 

@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Full-grid SAD/ELF data loaders for the verified ELFNet checkpoint family.
+"""Full-grid SAD/ELF data loaders for ELFNet.
 
-The ``epoch1000.ckpt`` model was trained on paired ``*_sad.npy`` and
-``*_elf.npy`` grids. Each dataset item is an entire periodic unit-cell grid,
-not a patch. Production loaders bucket samples by exact grid shape, so the
-periodic tiling collate path is normally a no-op inside each batch.
+Each dataset item is an entire periodic unit-cell grid, not a patch.
+Production loaders bucket samples by exact grid shape, so the periodic tiling
+collate path is normally a no-op inside each batch.
 """
 
 from __future__ import annotations

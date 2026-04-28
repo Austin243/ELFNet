@@ -2,11 +2,10 @@
 # -*- coding: utf-8 -*-
 """Train or fine-tune the full-grid ELFNet ``ELFPredictor`` model.
 
-This trainer matches the old ChiNet model family: each sample is a complete
-paired SAD/ELF grid, and the collate function periodically tiles mixed-size
-samples to the largest shape in the batch. By default, samples are bucketed by
-exact grid shape so that tiling is normally a no-op. The trainer does not use
-symmetry operations or patch sampling.
+Each sample is a complete paired SAD/ELF grid, and the collate function
+periodically tiles mixed-size samples to the largest shape in the batch. By
+default, samples are bucketed by exact grid shape so that tiling is normally a
+no-op. The trainer does not use symmetry operations or patch sampling.
 """
 
 from __future__ import annotations

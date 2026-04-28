@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "elfnet"
-version = "0.3.0"
+version = "0.3.1"
 description = "Full-grid prediction of electron localization functions from superposed atomic densities"
 readme = "README.md"
 requires-python = ">=3.10"

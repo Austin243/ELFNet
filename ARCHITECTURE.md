@@ -1,6 +1,6 @@
 # Architecture
 
-The bundled checkpoint uses `ELFPredictor`, a full-grid SAD-to-ELF model.
+ELFNet uses `ELFPredictor`, a full-grid SAD-to-ELF model.
 
 ## Top-Level Flow
 
@@ -26,7 +26,7 @@ elf = model.predict_elf(sad)
 
 ## ResidualUNet3D
 
-Default checkpoint configuration:
+Default production configuration:
 
 ```text
 input channels: 1
@@ -77,7 +77,7 @@ The final head uses `Sigmoid`, so the main predicted ELF channel is bounded in
 
 ## Loss Used During Training
 
-The historical training objective combined:
+The production training objective combines:
 
 ```text
 weighted SmoothL1 voxel loss
@@ -87,7 +87,7 @@ soft tail-weighted CDF distribution loss
 learned dynamic uncertainty weights
 ```
 
-The SAD-derived interstitial weight map was:
+The SAD-derived interstitial weight map is:
 
 ```text
 w = (1 - sad / sad.max()) ** gamma_w
@@ -109,7 +109,7 @@ cdf_max_voxels = 200000
 
 ## What The Model Does Not Do
 
-This checkpoint does not use:
+This model does not use:
 
 ```text
 crystallographic symmetry operations
@@ -118,6 +118,3 @@ patch-local symmetry transforms
 patch extraction
 overlap blending
 ```
-
-Those concepts belonged to a later SAD2ELF model family and should not be used
-to describe the bundled full-grid checkpoint.
