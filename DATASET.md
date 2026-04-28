@@ -1,7 +1,11 @@
 # ELFNet Dataset Notes
 
-This repository does not include a training dataset. Use an external dataset of
-paired full-grid SAD/ELF NumPy arrays.
+This repository does not include raw training arrays in regular Git history.
+Large immutable datasets are stored as Git LFS archive assets under `release/`;
+see `DATA_RELEASES.md` for the current 326,009-triplet training set, the earlier
+A/AB sweep dataset, and the separate 75,000-structure DFT reference ELFCAR set.
+For custom training, use an external dataset of paired full-grid SAD/ELF NumPy
+arrays.
 
 Required files:
 

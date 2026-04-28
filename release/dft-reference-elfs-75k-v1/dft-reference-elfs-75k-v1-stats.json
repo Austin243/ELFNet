@@ -1,0 +1,19 @@
+{
+  "dataset_name": "ELFNet 75k DFT reference ELFCAR set",
+  "source_manifest": "/home/aellis/SAD2ELFNet/reports/chinet_epoch1000_best75000_structure_manifest.tsv",
+  "source_root": "/home/aellis/Databases/New_structures/Yuanhui_structures",
+  "structure_count": 75000,
+  "available_elfcar_count": 75000,
+  "missing_elfcar_count": 0,
+  "total_uncompressed_bytes": 37008424188,
+  "total_uncompressed_gib": 34.46678089722991,
+  "file_size_bytes": {
+    "min": 193882,
+    "max": 1411957,
+    "mean": 493445.65584,
+    "median": 464997.0
+  },
+  "archive_file_list": "/home/aellis/github/ELFNet/release/dft-reference-elfs-75k-v1/archive-file-list.txt",
+  "release_manifest": "/home/aellis/github/ELFNet/release/dft-reference-elfs-75k-v1/dft-reference-elfs-75k-v1-manifest.tsv",
+  "missing_examples": []
+}
