@@ -3,9 +3,9 @@
 ELFNet predicts electron localization function (ELF) grids from superposed
 atomic density (SAD) grids for periodic crystal structures.
 
-The current repository is production code only: it does not bundle a model
-checkpoint or dataset. Training data and checkpoints should be supplied
-externally.
+The repository includes inference and training code, a POSCAR example, packaged
+neutral-density tables, and Git LFS dataset archives. Model checkpoints are
+supplied separately.
 
 ## Install
 
@@ -62,17 +62,16 @@ Key details:
 - output head: sigmoid-bounded ELF prediction
 - grid handling: pad to multiples of 16, run full-grid model, crop back
 
-The default production configuration has about `10.86M` parameters.
+The default configuration has about `10.86M` parameters.
 
+## Datasets
 
-## Large Data Releases
-
-Large datasets are distributed as Git LFS archive assets under `release/`.
-The current layout is documented in `DATA_RELEASES.md`:
+Large datasets are stored as Git LFS archive assets under `release/`. See
+`DATA_RELEASES.md` for download and extraction commands.
 
 - `dataset-v1`: 77,279 A/AB sweep SAD/ELF/symmetry triplets.
 - `pressure-triplets-326k-v1`: 326,009 SAD/ELF/symmetry triplets for training.
-- `dft-reference-elfs-75k-v1`: 75,000 selected DFT reference ELFCAR files for the ChiNet epoch1000 best-75k analysis.
+- `dft-reference-elfs-75k-v1`: 75,000 selected DFT reference ELFCAR files.
 
 ## Training And Fine-Tuning Data
 
@@ -84,8 +83,8 @@ Training uses paired NumPy arrays:
 ```
 
 Each pair must have identical full-grid shape. The loader yields complete
-unit-cell grids, not patches. Production training buckets samples by exact
-grid shape, so periodic tiling is normally a no-op inside each batch.
+unit-cell grids, not patches. Shape-bucketed training groups samples by exact
+grid shape.
 
 If a dataset also contains `<stem>_sym.npy`, those files are ignored by this
 model family.
@@ -107,7 +106,7 @@ elfnet-train /path/to/paired_sad_elf_arrays \
 
 ## Loss
 
-Current production training defaults use `lambda_cdf=0.05`, `cdf_bins=64`,
+Default training settings use `lambda_cdf=0.05`, `cdf_bins=64`,
 `cdf_sigma=0.02`, `cdf_tail_start=0.60`, `cdf_tail_weight=2.0`, and
 `cdf_max_voxels=200000`.
 
@@ -122,7 +121,7 @@ src/elfnet/model.py       ELFPredictor and ResidualUNet3D
 src/elfnet/inference.py   POSCAR-to-ELFCAR full-grid inference
 src/elfnet/data.py        full-grid paired SAD/ELF loaders
 src/elfnet/train.py       Lightning trainer for training/fine-tuning
-configs/default.yaml      production architecture/training defaults
+configs/default.yaml      architecture/training defaults
 examples/poscars/         small POSCAR inference example
 ```
 

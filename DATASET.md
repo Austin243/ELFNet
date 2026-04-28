@@ -1,11 +1,9 @@
 # ELFNet Dataset Notes
 
-This repository does not include raw training arrays in regular Git history.
-Large immutable datasets are stored as Git LFS archive assets under `release/`;
-see `DATA_RELEASES.md` for the current 326,009-triplet training set, the earlier
-A/AB sweep dataset, and the separate 75,000-structure DFT reference ELFCAR set.
-For custom training, use an external dataset of paired full-grid SAD/ELF NumPy
-arrays.
+Raw training arrays are stored as Git LFS archive assets under `release/`, not
+as regular Git blobs. See `DATA_RELEASES.md` for the packaged datasets and
+checksums. Custom training data should use the same paired full-grid SAD/ELF
+NumPy convention.
 
 Required files:
 
@@ -14,7 +12,7 @@ Required files:
 <stem>_elf.npy
 ```
 
-Optional files that may exist in older local datasets:
+Optional files:
 
 ```text
 <stem>_sym.npy
@@ -32,9 +30,8 @@ sad: (1, D, H, W)
 elf: (1, D, H, W)
 ```
 
-There is no patch extraction. Production training buckets samples by exact
-grid shape, so the periodic tiling collate path is normally a no-op inside
-each batch.
+There is no patch extraction. Shape-bucketed training groups samples by exact
+grid shape.
 
 ## SAD Definition
 

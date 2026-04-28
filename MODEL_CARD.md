@@ -2,7 +2,7 @@
 
 ## Model Details
 
-This repository contains the production full-grid SAD-to-ELF model code.
+This repository contains the full-grid SAD-to-ELF model code.
 
 - Model class: `ELFPredictor`
 - Backbone: `ResidualUNet3D`
@@ -13,7 +13,7 @@ This repository contains the production full-grid SAD-to-ELF model code.
 - Patch inference: none
 - Default parameter count: about `10.86M`
 
-No model checkpoint is bundled in this repository. Supply a checkpoint path at
+No model checkpoint is tracked in this repository. Supply a checkpoint path at
 inference time or set `ELFNET_CHECKPOINT`.
 
 ## Architecture
@@ -33,7 +33,7 @@ runs the backbone, and crops predictions back to the original grid shape.
 
 ## Training Objective
 
-The production training objective combines:
+The training objective combines:
 
 - weighted SmoothL1/Huber voxel loss;
 - auxiliary decoder voxel loss;
@@ -49,7 +49,7 @@ w = (1 - sad / sad.max()) ** gamma_w
 w = w / mean(w)
 ```
 
-Default production loss settings:
+Default loss settings:
 
 ```text
 lambda_vox = 1.0
@@ -91,4 +91,5 @@ Any `<stem>_sym.npy` files are ignored by this model family.
 
 - Predictions are model estimates, not DFT calculations.
 - Quantitative comparison to VASP ELFCAR references requires a common grid.
-- No checkpoint or dataset is included with the current repository state.
+- No checkpoint is included.
+- Dataset archives are available through Git LFS.

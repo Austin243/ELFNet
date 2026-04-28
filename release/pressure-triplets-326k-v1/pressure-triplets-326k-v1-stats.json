@@ -1,7 +1,5 @@
 {
   "dataset_name": "ELFNet pressure triplets 326k v1",
-  "source_dir": "/home/aellis/SAD2ELFNet/datasets/pressure_triplets",
-  "source_manifest": "/home/aellis/SAD2ELFNet/datasets/pressure_triplets/manifest.tsv",
   "manifest_rows": 326009,
   "complete_triplets": 326009,
   "npy_files": 978027,
@@ -265,5 +263,6 @@
     "6": 59252,
     "96": 1191
   },
-  "uncompressed_directory_size_note": "du -sh reported 100G for /home/aellis/SAD2ELFNet/datasets"
+  "manifest": "pressure-triplets-326k-v1-manifest.tsv.gz",
+  "uncompressed_size_note": "about 100 GiB before compression"
 }

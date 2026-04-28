@@ -1,29 +1,20 @@
 # ELFNet Data Releases
 
-ELFNet keeps raw large datasets out of regular Git history. The code repository
-tracks source, configuration, small examples, documentation, metadata, and Git
-LFS pointers for immutable compressed dataset archives.
+ELFNet stores large datasets as compressed archives tracked with Git LFS. Regular
+Git history contains code, small examples, documentation, checksums, and LFS
+pointers.
 
-This follows GitHub guidance for repository health: regular Git files over 100 MiB
-are rejected and repositories are recommended to stay small. The large archive
-parts are therefore stored through Git LFS, not as normal Git blobs.
+## Datasets
 
-## Published LFS Datasets
-
-| Release tag | Contents | Local staging directory |
+| Dataset | Contents | Path |
 |---|---:|---|
 | `dataset-v1` | 77,279 A/AB sweep SAD/ELF/symmetry triplets, 231,837 `.npy` files | `release/dataset-v1/` |
 | `pressure-triplets-326k-v1` | 326,009 pressure SAD/ELF/symmetry triplets, 978,027 `.npy` files | `release/pressure-triplets-326k-v1/` |
-| `dft-reference-elfs-75k-v1` | 75,000 selected DFT reference `ELFCAR` files used by the ChiNet epoch1000 best-75k analysis | `release/dft-reference-elfs-75k-v1/` |
-
-`pressure-triplets-326k-v1` is generated from
-`/home/aellis/SAD2ELFNet/datasets/pressure_triplets`. The source structures and
-pressure dataset provenance live in the local SAD2ELFNet and mp-aloe extension
-workspaces; this repository publishes the training arrays and manifests.
+| `dft-reference-elfs-75k-v1` | 75,000 selected DFT reference `ELFCAR` files | `release/dft-reference-elfs-75k-v1/` |
 
 ## Download With Git LFS
 
-Install Git LFS before cloning, or run `git lfs pull` after cloning:
+Install Git LFS before cloning, or run `git lfs pull` after cloning.
 
 ```bash
 git lfs install
@@ -41,8 +32,7 @@ git lfs pull --include="release/pressure-triplets-326k-v1/**"
 ## Extract Single-Archive Datasets
 
 `dataset-v1` and `dft-reference-elfs-75k-v1` use one split archive each.
-Download all parts and metadata for the dataset, verify the part checksums,
-then reassemble the archive:
+Verify the part checksums, reassemble the archive, then extract it:
 
 ```bash
 cd release/dft-reference-elfs-75k-v1

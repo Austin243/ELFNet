@@ -1,6 +1,6 @@
 # Weights
 
-No checkpoint is bundled in this repository.
+No checkpoint is tracked in this repository.
 
 For inference, pass an explicit checkpoint path:
 
@@ -14,5 +14,4 @@ You can also set `ELFNET_CHECKPOINT` or place a local checkpoint at:
 weights/elfnet.ckpt
 ```
 
-Checkpoint files remain Git-LFS eligible through `.gitattributes`, but no
-checkpoint object is tracked in the current repository state.
+Checkpoint files are Git-LFS eligible through `.gitattributes`.
