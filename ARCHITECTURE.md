@@ -6,13 +6,12 @@ ELFNet uses `ELFPredictor`, a full-grid SAD-to-ELF model.
 
 ```text
 SAD grid (B, 1, D, H, W)
-  -> circular pad to multiples of 16
-  -> ResidualUNet3D
-  -> crop back to original D, H, W
+  -> FlatResNet3D
   -> main ELF prediction (B, 1, D, H, W)
 ```
 
-The model returns both the main prediction and auxiliary decoder predictions:
+The model returns the main prediction and an empty auxiliary list for this
+backbone:
 
 ```python
 main, aux = model(sad)
@@ -24,25 +23,25 @@ For inference, use:
 elf = model.predict_elf(sad)
 ```
 
-## ResidualUNet3D
+## FlatResNet3D
 
 Default production configuration:
 
 ```text
 input channels: 1
-base channels: 16
-depth: 4
-bottleneck channels: 256
+base channels: 32
+residual blocks: 16
+kernel size: 5
+attention every: 4 blocks
 ```
 
 The backbone contains:
 
 1. A circular-padding convolution stem.
-2. Four downsampling blocks.
-3. A CBAM attention bottleneck.
-4. Four transposed-convolution upsampling blocks with skip connections.
+2. Same-resolution residual blocks.
+3. Periodic CBAM attention blocks.
+4. A residual post block.
 5. A sigmoid main head.
-6. Auxiliary sigmoid heads on decoder stages.
 
 ## Residual Blocks
 
@@ -61,9 +60,9 @@ GELU
 
 Circular padding is the only explicit periodic treatment in this architecture.
 
-## Bottleneck Attention
+## Attention
 
-The bottleneck uses a 3D CBAM block:
+The flat backbone inserts 3D CBAM blocks through the residual body:
 
 ```text
 channel attention: global average/max pooling -> 1x1 Conv3d MLP -> sigmoid
@@ -81,10 +80,10 @@ The production training objective combines:
 
 ```text
 weighted SmoothL1 voxel loss
-auxiliary decoder voxel loss
-weighted gradient loss
-soft tail-weighted CDF distribution loss
-learned dynamic uncertainty weights
+periodic gradient loss
+sorted-value CDF distribution loss
+adaptive peak objective
+learned Kendall uncertainty weights
 ```
 
 The SAD-derived interstitial weight map is:
@@ -99,12 +98,12 @@ Current production training defaults:
 ```text
 gamma_w = 2.0
 delta = 0.1
-aux_weight = 0.3
+aux_weight = 0.0
 cdf_bins = 64
 cdf_sigma = 0.02
 cdf_tail_start = 0.60
 cdf_tail_weight = 2.0
-cdf_max_voxels = 200000
+cdf_max_voxels = 20000
 ```
 
 ## What The Model Does Not Do

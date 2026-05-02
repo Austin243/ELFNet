@@ -4,8 +4,7 @@ ELFNet predicts electron localization function (ELF) grids from superposed
 atomic density (SAD) grids for periodic crystal structures.
 
 The repository includes inference and training code, a POSCAR example, packaged
-neutral-density tables, and Git LFS dataset archives. Model checkpoints are
-supplied separately.
+neutral-density tables, a default checkpoint, and Git LFS dataset archives.
 
 ## Install
 
@@ -23,16 +22,16 @@ python -m pip install -e ".[train]"
 
 ## Quick Inference
 
-Inputs are POSCAR files named `POSCAR_*`. A checkpoint path is required unless
-`ELFNET_CHECKPOINT` is set or you have placed a local checkpoint at
+Inputs are POSCAR files named `POSCAR_*`. By default, inference uses
 `weights/elfnet.ckpt`.
 
 ```bash
 elfnet-predict \
-  /path/to/checkpoint.ckpt \
   examples/poscars \
   runs/example_outputs
 ```
+
+You can pass another checkpoint path explicitly or set `ELFNET_CHECKPOINT`.
 
 The inference pipeline:
 
@@ -47,22 +46,22 @@ tile inputs into patches.
 
 ## Model Architecture
 
-`ELFPredictor` wraps `ResidualUNet3D`.
+`ELFPredictor` wraps `FlatResNet3D`.
 
 Key details:
 
 - input: one SAD channel, shape `(B, 1, D, H, W)`
-- output: one ELF channel plus auxiliary decoder predictions
-- base channels: `16`
-- depth: `4`
+- output: one ELF channel
+- base channels: `32`
+- residual blocks: `16`
+- kernel size: `5`
 - padding: circular 3D convolutions
 - residual blocks: Conv3D, GroupNorm, GELU, Conv3D, GroupNorm, squeeze-excitation
-- bottleneck: two residual blocks plus 3D CBAM attention
-- decoder: transposed-convolution upsampling with skip connections
+- attention: 3D CBAM every four residual blocks
 - output head: sigmoid-bounded ELF prediction
-- grid handling: pad to multiples of 16, run full-grid model, crop back
+- grid handling: full-grid same-resolution inference
 
-The default configuration has about `10.86M` parameters.
+The default configuration has about `4.23M` parameters.
 
 ## Datasets
 
@@ -110,14 +109,14 @@ Default training settings use `lambda_cdf=0.05`, `cdf_bins=64`,
 `cdf_sigma=0.02`, `cdf_tail_start=0.60`, `cdf_tail_weight=2.0`, and
 `cdf_max_voxels=200000`.
 
-The objective combines weighted voxel loss, auxiliary decoder loss, weighted
-gradient loss, a soft tail-weighted CDF distribution loss, and learned dynamic
-weights for the three main terms.
+The objective combines voxel loss, periodic gradient loss, sorted-value CDF
+distribution loss, an adaptive peak objective, and learned Kendall uncertainty
+weights.
 
 ## Repository Layout
 
 ```text
-src/elfnet/model.py       ELFPredictor and ResidualUNet3D
+src/elfnet/model.py       ELFPredictor and model backbones
 src/elfnet/inference.py   POSCAR-to-ELFCAR full-grid inference
 src/elfnet/data.py        full-grid paired SAD/ELF loaders
 src/elfnet/train.py       Lightning trainer for training/fine-tuning
