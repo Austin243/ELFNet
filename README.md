@@ -41,15 +41,12 @@ The inference pipeline:
 4. runs one full-grid forward pass through `ELFPredictor`;
 5. writes `ELFCAR_<id>.vasp`.
 
-This model does not consume crystallographic symmetry operations and does not
-tile inputs into patches.
-
 ## Datasets
 
 Large datasets are stored as Git LFS archive assets under `release/`. See
 `DATA_RELEASES.md` for download and extraction commands.
 
-- `pressure-triplets-326k-v1`: 326,009 SAD/ELF/symmetry triplets for training.
+- `pressure-triplets-326k-v1`: 326,009 SAD/ELF triplets for training.
 - `dft-reference-elfs-75k-v1`: 75,000 selected DFT reference ELFCAR files.
 
 ## Training And Fine-Tuning Data
@@ -61,12 +58,8 @@ Training uses paired NumPy arrays:
 <stem>_elf.npy
 ```
 
-Each pair must have identical full-grid shape. The loader yields complete
-unit-cell grids, not patches. Shape-bucketed training groups samples by exact
-grid shape.
-
-If a dataset also contains `<stem>_sym.npy`, those files are ignored by this
-model family.
+Each pair must have identical full-grid shape. Shape-bucketed training groups
+samples by exact grid shape.
 
 Fine-tuning example:
 
