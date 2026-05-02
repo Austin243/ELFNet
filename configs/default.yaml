@@ -1,40 +1,46 @@
 checkpoint:
-  bundled: false
+  bundled: true
   default_name: elfnet.ckpt
 
 model:
   class_name: ELFPredictor
-  backbone: ResidualUNet3D
+  backbone: FlatResNet3D
   input_channels: 1
   output_channels: 1
-  base: 16
+  base: 32
   depth: 4
+  flat_blocks: 16
+  flat_kernel: 5
+  flat_attention_every: 4
   uses_symmetry: false
   uses_patch_inference: false
-  pad_multiple: 16
+  pad_multiple: 1
 
 loss:
   lambda_vox: 1.0
-  lambda_grad: 0.2
-  lambda_cdf: 0.05
+  lambda_grad: 1.0
+  lambda_cdf: 1.0
+  mode: kendall
   cdf_bins: 64
   cdf_sigma: 0.02
   cdf_tail_start: 0.60
   cdf_tail_weight: 2.0
-  cdf_max_voxels: 200000
+  cdf_max_voxels: 20000
   delta: 0.1
-  aux_weight: 0.3
+  aux_weight: 0.0
   gamma_w: 2.0
+  peak_topk_frac: 0.002
+  peak_topk_min: 32
+  peak_topk_max: 512
 
 training:
-  lr: 0.0006
+  lr: 0.0001
   weight_decay: 0.0001
   optimizer: AdamW
   scheduler: OneCycleLR
-  batch_per_gpu: 32
-  global_batch_8gpu: 256
+  batch_per_gpu: 16
   batching: shape
-  max_epochs: 100
+  max_epochs: 60
   val_frac: 0.05
   precision: bf16-mixed
   data_mode: full_grid_shape_bucketed_sad_elf

@@ -1,17 +1,9 @@
 # Weights
 
-No checkpoint is tracked in this repository.
-
-For inference, pass an explicit checkpoint path:
-
-```bash
-elfnet-predict /path/to/checkpoint.ckpt examples/poscars runs/example_outputs
-```
-
-You can also set `ELFNET_CHECKPOINT` or place a local checkpoint at:
+The default inference checkpoint is:
 
 ```text
 weights/elfnet.ckpt
 ```
 
-Checkpoint files are Git-LFS eligible through `.gitattributes`.
+You can still pass another checkpoint path explicitly or set `ELFNET_CHECKPOINT`.

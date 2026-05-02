@@ -8,19 +8,25 @@ from typing import Any
 
 DEFAULT_CHECKPOINT = {
     "name": "elfnet.ckpt",
-    "bundled": False,
+    "bundled": True,
     "production_training_hparams": {
+        "arch": "flat_resnet",
+        "base": 32,
+        "flat_blocks": 16,
+        "flat_kernel": 5,
+        "flat_attention_every": 4,
+        "loss_mode": "kendall",
         "lambda_vox": 1.0,
-        "lambda_grad": 0.2,
-        "lambda_cdf": 0.05,
+        "lambda_grad": 1.0,
+        "lambda_cdf": 1.0,
         "cdf_bins": 64,
         "cdf_sigma": 0.02,
         "cdf_tail_start": 0.60,
         "cdf_tail_weight": 2.0,
-        "cdf_max_voxels": 200000,
+        "cdf_max_voxels": 20000,
         "delta": 0.1,
-        "lr": 6e-4,
-        "aux_weight": 0.3,
+        "lr": 1e-4,
+        "aux_weight": 0.0,
         "gamma_w": 2.0,
     },
 }
@@ -50,9 +56,8 @@ def resolve_checkpoint(path: str | Path | None = None) -> Path:
 
     checked = "\n".join(f"  - {candidate}" for candidate in candidates)
     raise FileNotFoundError(
-        "ELFNet does not currently bundle a checkpoint. Pass a checkpoint path, "
-        "set ELFNET_CHECKPOINT, or place a local checkpoint at "
-        "weights/elfnet.ckpt.\n"
+        "Checkpoint not found. Pass a checkpoint path, set ELFNET_CHECKPOINT, "
+        "or use the default weights/elfnet.ckpt file.\n"
         f"Checked:\n{checked}"
     )
 
