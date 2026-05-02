@@ -8,7 +8,6 @@ pointers.
 
 | Dataset | Contents | Path |
 |---|---:|---|
-| `dataset-v1` | 77,279 A/AB sweep SAD/ELF/symmetry triplets, 231,837 `.npy` files | `release/dataset-v1/` |
 | `pressure-triplets-326k-v1` | 326,009 pressure SAD/ELF/symmetry triplets, 978,027 `.npy` files | `release/pressure-triplets-326k-v1/` |
 | `dft-reference-elfs-75k-v1` | 75,000 selected DFT reference `ELFCAR` files | `release/dft-reference-elfs-75k-v1/` |
 
@@ -29,10 +28,10 @@ To fetch only one dataset:
 git lfs pull --include="release/pressure-triplets-326k-v1/**"
 ```
 
-## Extract Single-Archive Datasets
+## Extract DFT Reference Archive
 
-`dataset-v1` and `dft-reference-elfs-75k-v1` use one split archive each.
-Verify the part checksums, reassemble the archive, then extract it:
+`dft-reference-elfs-75k-v1` uses one split archive. Verify the part checksums,
+reassemble the archive, then extract it:
 
 ```bash
 cd release/dft-reference-elfs-75k-v1
@@ -41,8 +40,6 @@ cat dft-reference-elfs-75k-v1.tar.zst.part-* > dft-reference-elfs-75k-v1.tar.zst
 sha256sum -c SHA256SUMS.full
 tar --use-compress-program=unzstd -xf dft-reference-elfs-75k-v1.tar.zst
 ```
-
-Use the same pattern for `release/dataset-v1/elfnet-aab-sweep-v1.tar.zst.part-*`.
 
 ## Extract Pressure 326k Shards
 

@@ -49,7 +49,6 @@ tile inputs into patches.
 Large datasets are stored as Git LFS archive assets under `release/`. See
 `DATA_RELEASES.md` for download and extraction commands.
 
-- `dataset-v1`: 77,279 A/AB sweep SAD/ELF/symmetry triplets.
 - `pressure-triplets-326k-v1`: 326,009 SAD/ELF/symmetry triplets for training.
 - `dft-reference-elfs-75k-v1`: 75,000 selected DFT reference ELFCAR files.
 
