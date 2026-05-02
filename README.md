@@ -44,25 +44,6 @@ The inference pipeline:
 This model does not consume crystallographic symmetry operations and does not
 tile inputs into patches.
 
-## Model Architecture
-
-`ELFPredictor` wraps `FlatResNet3D`.
-
-Key details:
-
-- input: one SAD channel, shape `(B, 1, D, H, W)`
-- output: one ELF channel
-- base channels: `32`
-- residual blocks: `16`
-- kernel size: `5`
-- padding: circular 3D convolutions
-- residual blocks: Conv3D, GroupNorm, GELU, Conv3D, GroupNorm, squeeze-excitation
-- attention: 3D CBAM every four residual blocks
-- output head: sigmoid-bounded ELF prediction
-- grid handling: full-grid same-resolution inference
-
-The default configuration has about `4.23M` parameters.
-
 ## Datasets
 
 Large datasets are stored as Git LFS archive assets under `release/`. See
@@ -102,16 +83,6 @@ elfnet-train /path/to/paired_sad_elf_arrays \
   --cdf-tail-start 0.6 \
   --cdf-tail-weight 2.0
 ```
-
-## Loss
-
-Default training settings use `lambda_cdf=0.05`, `cdf_bins=64`,
-`cdf_sigma=0.02`, `cdf_tail_start=0.60`, `cdf_tail_weight=2.0`, and
-`cdf_max_voxels=200000`.
-
-The objective combines voxel loss, periodic gradient loss, sorted-value CDF
-distribution loss, an adaptive peak objective, and learned Kendall uncertainty
-weights.
 
 ## Repository Layout
 
