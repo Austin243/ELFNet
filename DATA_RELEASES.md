@@ -9,7 +9,7 @@ pointers.
 | Dataset | Contents | Path |
 |---|---:|---|
 | `pressure-triplets-326k-v1` | 326,009 pressure SAD/ELF/symmetry triplets, 978,027 `.npy` files | `release/pressure-triplets-326k-v1/` |
-| `dft-reference-elfs-75k-v1` | 75,000 selected DFT reference `ELFCAR` files | `release/dft-reference-elfs-75k-v1/` |
+| `dft-reference-elfs-75k-v1` | 75,000 DFT reference `ELFCAR` files | `release/dft-reference-elfs-75k-v1/` |
 
 ## Download With Git LFS
 
