@@ -6,15 +6,28 @@ This repository contains the full-grid SAD-to-ELF model code.
 
 - Model class: `ELFPredictor`
 - Backbone: `FlatResNet3D`
+- Architecture: base `32`, `16` flat residual blocks, kernel size `5`,
+  CBAM attention every `4` blocks
 - Input: one SAD channel shaped `(B, 1, D, H, W)`
 - Output: one sigmoid-bounded ELF channel
 - Inference mode: one full-grid forward pass
 - Symmetry input: none
 - Patch inference: none
-- Default parameter count: about `4.23M`
+- Default parameter count: `4,232,989`
 
 The default checkpoint is `weights/elfnet.ckpt`. You can pass another
 checkpoint path at inference time or set `ELFNET_CHECKPOINT`.
+
+Bundled checkpoint provenance:
+
+```text
+source run: pressure_flatresnet_c32_b16_k5_kendall_fixed_order/ELF_20260430_123836
+checkpoint epoch: 59
+global step: 72780
+best val/loss: -9.523093223571777
+training structures: 326009
+checkpoint SHA256: 66dac5953e2b93cb0629b708c77cd444b20a40daa586514ab4187b6f2c995c34
+```
 
 ## Architecture
 
@@ -52,6 +65,7 @@ Default loss settings:
 lambda_vox = 1.0
 lambda_grad = 1.0
 lambda_cdf = 1.0
+loss_mode = kendall
 cdf_bins = 64
 cdf_sigma = 0.02
 cdf_tail_start = 0.60
@@ -60,6 +74,18 @@ cdf_max_voxels = 20000
 delta = 0.1
 aux_weight = 0.0
 gamma_w = 2.0
+peak_margin = 0.07
+peak_min_value = 0.0
+peak_location_tau = 0.75
+peak_location_margin = 0.07
+peak_location_temperature = 0.05
+peak_topk_frac = 0.002
+peak_topk_min = 32
+peak_topk_max = 512
+peak_location_loss_weight = 1.0
+peak_value_loss_weight = 1.0
+false_peak_loss_weight = 1.0
+kendall_log_var_clamp = [-5.0, 5.0]
 ```
 
 ## Intended Use

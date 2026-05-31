@@ -1,6 +1,11 @@
 checkpoint:
   bundled: true
   default_name: elfnet.ckpt
+  sha256: 66dac5953e2b93cb0629b708c77cd444b20a40daa586514ab4187b6f2c995c34
+  source_run: pressure_flatresnet_c32_b16_k5_kendall_fixed_order/ELF_20260430_123836
+  epoch: 59
+  global_step: 72780
+  best_val_loss: -9.523093223571777
 
 model:
   class_name: ELFPredictor
@@ -15,11 +20,13 @@ model:
   uses_symmetry: false
   uses_patch_inference: false
   pad_multiple: 1
+  parameter_count: 4232989
 
 loss:
   lambda_vox: 1.0
   lambda_grad: 1.0
   lambda_cdf: 1.0
+  lambda_hist: 1.0
   mode: kendall
   cdf_bins: 64
   cdf_sigma: 0.02
@@ -29,21 +36,41 @@ loss:
   delta: 0.1
   aux_weight: 0.0
   gamma_w: 2.0
+  interstitial_weight: 0.0
+  peak_all_weight: 0.0
+  peak_weight: 0.0
+  peak_atomic_weight: 0.0
+  peak_margin: 0.07
+  peak_min_value: 0.0
+  peak_location_tau: 0.75
+  peak_location_margin: 0.07
+  peak_location_temperature: 0.05
   peak_topk_frac: 0.002
   peak_topk_min: 32
   peak_topk_max: 512
+  peak_location_loss_weight: 1.0
+  peak_value_loss_weight: 1.0
+  false_peak_loss_weight: 1.0
+  kendall_log_var_min: -5.0
+  kendall_log_var_max: 5.0
 
 training:
+  dataset: pressure-triplets-326k-v1
+  structures: 326009
   lr: 0.0001
   weight_decay: 0.0001
   optimizer: AdamW
   scheduler: OneCycleLR
   batch_per_gpu: 16
+  accumulation_steps: 2
   batching: shape
   max_epochs: 60
   val_frac: 0.05
+  val_metric: loss
   precision: bf16-mixed
   data_mode: full_grid_shape_bucketed_sad_elf
+  nodes: 2
+  ranks: 8
 
 inference:
   encut: 680

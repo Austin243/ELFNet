@@ -33,6 +33,7 @@ base channels: 32
 residual blocks: 16
 kernel size: 5
 attention every: 4 blocks
+parameter count: 4,232,989
 ```
 
 The backbone contains:
@@ -96,6 +97,10 @@ w = w / mean(w)
 Current production training defaults:
 
 ```text
+loss_mode = kendall
+lambda_vox = 1.0
+lambda_grad = 1.0
+lambda_cdf = 1.0
 gamma_w = 2.0
 delta = 0.1
 aux_weight = 0.0
@@ -104,6 +109,15 @@ cdf_sigma = 0.02
 cdf_tail_start = 0.60
 cdf_tail_weight = 2.0
 cdf_max_voxels = 20000
+peak_margin = 0.07
+peak_min_value = 0.0
+peak_location_tau = 0.75
+peak_location_margin = 0.07
+peak_location_temperature = 0.05
+peak_topk_frac = 0.002
+peak_topk_min = 32
+peak_topk_max = 512
+kendall_log_var_clamp = [-5.0, 5.0]
 ```
 
 ## What The Model Does Not Do
