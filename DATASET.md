@@ -56,11 +56,22 @@ range `[0, 1]`.
 
 ```bash
 elfnet-train /path/to/paired_arrays \
-  --epochs 100 \
-  --batch 32 \
+  --epochs 60 \
+  --batch 16 \
+  --accum 2 \
   --batching shape \
   --val-frac 0.05 \
-  --lambda-cdf 0.05
+  --lr 1e-4 \
+  --arch flat_resnet \
+  --base 32 \
+  --flat-blocks 16 \
+  --flat-kernel 5 \
+  --flat-attention-every 4 \
+  --loss-mode kendall \
+  --lambda-grad 1.0 \
+  --lambda-cdf 1.0 \
+  --cdf-max-voxels 20000 \
+  --val-metric loss
 ```
 
 The trainer expects all required `*_sad.npy` and `*_elf.npy` files to be in the

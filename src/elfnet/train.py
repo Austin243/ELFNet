@@ -47,34 +47,56 @@ def _world_info() -> tuple[int, int, int]:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("data_dir", type=Path, help="Directory with paired *_sad.npy and *_elf.npy")
-    parser.add_argument("--batch", type=int, default=32, help="Batch size per process")
+    parser.add_argument("--batch", type=int, default=16, help="Batch size per process")
     parser.add_argument("--batching", choices=("shape", "random"), default="shape",
                         help="Batch same-size grids together for less padding, or use fully random batches")
-    parser.add_argument("--epochs", type=int, default=150)
-    parser.add_argument("--accum", type=int, default=1, help="Gradient accumulation steps")
+    parser.add_argument("--epochs", type=int, default=60)
+    parser.add_argument("--accum", type=int, default=2, help="Gradient accumulation steps")
     parser.add_argument("--num-workers", type=int, default=None)
-    parser.add_argument("--lr", type=float, default=6e-4)
+    parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--val-frac", "--val-fraction", dest="val_frac", type=float, default=0.1)
+    parser.add_argument("--val-frac", "--val-fraction", dest="val_frac", type=float, default=0.05)
     parser.add_argument("--precision", type=str, default="bf16-mixed")
     parser.add_argument("--output-dir", "--checkpoint-root", dest="output_dir", type=Path, default=_repo_root() / "checkpoints_sad2elf" / "full_grid")
     parser.add_argument("--resume-from-ckpt", type=Path, default=None)
     parser.add_argument("--use-checkpoint", action="store_true", help="Enable activation checkpointing during training")
-    parser.add_argument("--base", type=int, default=16)
+    parser.add_argument("--arch", choices=("flat_resnet", "unet"), default="flat_resnet")
+    parser.add_argument("--base", type=int, default=32)
     parser.add_argument("--depth", type=int, default=4)
+    parser.add_argument("--flat-blocks", type=int, default=16)
+    parser.add_argument("--flat-kernel", type=int, default=5)
+    parser.add_argument("--flat-attention-every", type=int, default=4)
     parser.add_argument("--lambda-vox", type=float, default=1.0)
-    parser.add_argument("--lambda-grad", type=float, default=0.20)
-    parser.add_argument("--lambda-cdf", type=float, default=0.05)
+    parser.add_argument("--lambda-grad", type=float, default=1.0)
+    parser.add_argument("--lambda-cdf", type=float, default=1.0)
     parser.add_argument("--cdf-bins", type=int, default=64)
     parser.add_argument("--cdf-sigma", type=float, default=0.02)
     parser.add_argument("--cdf-tail-start", type=float, default=0.60)
     parser.add_argument("--cdf-tail-weight", type=float, default=2.0)
-    parser.add_argument("--cdf-max-voxels", type=int, default=200_000)
+    parser.add_argument("--cdf-max-voxels", type=int, default=20_000)
     parser.add_argument("--delta", type=float, default=0.1)
-    parser.add_argument("--aux-weight", type=float, default=0.3)
+    parser.add_argument("--aux-weight", type=float, default=0.0)
     parser.add_argument("--gamma-w", type=float, default=2.0)
+    parser.add_argument("--loss-mode", choices=("full", "kendall"), default="kendall")
+    parser.add_argument("--interstitial-weight", type=float, default=0.0)
+    parser.add_argument("--peak-all-weight", type=float, default=0.0)
+    parser.add_argument("--peak-weight", type=float, default=0.0)
+    parser.add_argument("--peak-atomic-weight", type=float, default=0.0)
+    parser.add_argument("--peak-margin", type=float, default=0.07)
+    parser.add_argument("--peak-min-value", type=float, default=0.0)
+    parser.add_argument("--peak-location-tau", type=float, default=0.75)
+    parser.add_argument("--peak-location-margin", type=float, default=0.07)
+    parser.add_argument("--peak-location-temperature", type=float, default=0.05)
+    parser.add_argument("--peak-topk-frac", type=float, default=0.002)
+    parser.add_argument("--peak-topk-min", type=int, default=32)
+    parser.add_argument("--peak-topk-max", type=int, default=512)
+    parser.add_argument("--peak-location-loss-weight", type=float, default=1.0)
+    parser.add_argument("--peak-value-loss-weight", type=float, default=1.0)
+    parser.add_argument("--false-peak-loss-weight", type=float, default=1.0)
+    parser.add_argument("--kendall-log-var-min", type=float, default=-5.0)
+    parser.add_argument("--kendall-log-var-max", type=float, default=5.0)
     parser.add_argument("--weight-decay", type=float, default=1e-4)
-    parser.add_argument("--val-metric", type=str, default="l_vox_raw", help="Validation metric suffix under val/ used for best checkpointing")
+    parser.add_argument("--val-metric", type=str, default="loss", help="Validation metric suffix under val/ used for best checkpointing")
     parser.add_argument("--grad-clip", type=float, default=1.0)
 
     # Checkpoint-era loss aliases. New runs should use the CDF names above.
@@ -126,9 +148,31 @@ def main(argv: Sequence[str] | None = None) -> int:
         delta=args.delta,
         aux_weight=args.aux_weight,
         gamma_w=args.gamma_w,
+        loss_mode=args.loss_mode,
+        interstitial_weight=args.interstitial_weight,
+        peak_all_weight=args.peak_all_weight,
+        peak_weight=args.peak_weight,
+        peak_atomic_weight=args.peak_atomic_weight,
+        peak_margin=args.peak_margin,
+        peak_min_value=args.peak_min_value,
+        peak_location_tau=args.peak_location_tau,
+        peak_location_margin=args.peak_location_margin,
+        peak_location_temperature=args.peak_location_temperature,
+        peak_topk_frac=args.peak_topk_frac,
+        peak_topk_min=args.peak_topk_min,
+        peak_topk_max=args.peak_topk_max,
+        peak_location_loss_weight=args.peak_location_loss_weight,
+        peak_value_loss_weight=args.peak_value_loss_weight,
+        false_peak_loss_weight=args.false_peak_loss_weight,
+        kendall_log_var_min=args.kendall_log_var_min,
+        kendall_log_var_max=args.kendall_log_var_max,
         weight_decay=args.weight_decay,
+        arch=args.arch,
         base=args.base,
         depth=args.depth,
+        flat_blocks=args.flat_blocks,
+        flat_kernel=args.flat_kernel,
+        flat_attention_every=args.flat_attention_every,
         use_checkpoint=args.use_checkpoint,
     )
 

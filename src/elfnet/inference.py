@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*-
 """POSCAR-to-ELFCAR inference for full-grid ELFNet checkpoints.
 
-The repository does not bundle weights. Pass a checkpoint path, set
-``ELFNET_CHECKPOINT``, or place a local checkpoint under ``weights/``. The
+By default, inference uses the bundled ``weights/elfnet.ckpt`` checkpoint. Pass
+another checkpoint path or set ``ELFNET_CHECKPOINT`` to override it. The
 pipeline:
 
 1. parse ``POSCAR_*`` files,

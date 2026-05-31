@@ -33,6 +33,24 @@ elfnet-predict \
 
 You can pass another checkpoint path explicitly or set `ELFNET_CHECKPOINT`.
 
+## Bundled Model
+
+The bundled checkpoint is a full-grid `ELFPredictor` with a `FlatResNet3D`
+backbone:
+
+- checkpoint: `weights/elfnet.ckpt`
+- source run: `pressure_flatresnet_c32_b16_k5_kendall_fixed_order/ELF_20260430_123836`
+- checkpoint epoch: `59`
+- global step: `72780`
+- best monitored `val/loss`: `-9.523093223571777`
+- SHA256: `66dac5953e2b93cb0629b708c77cd444b20a40daa586514ab4187b6f2c995c34`
+- architecture: base `32`, `16` flat residual blocks, kernel size `5`,
+  CBAM attention every `4` blocks
+- parameter count: `4,232,989`
+- training set: `326,009` full-grid pressure SAD/ELF triplets
+- training objective: Kendall-weighted voxel, periodic-gradient, sorted-CDF,
+  and adaptive-peak losses
+
 The inference pipeline:
 
 1. parses each `POSCAR_*`;
@@ -65,15 +83,22 @@ Fine-tuning example:
 
 ```bash
 elfnet-train /path/to/paired_sad_elf_arrays \
-  --epochs 100 \
-  --batch 32 \
+  --epochs 60 \
+  --batch 16 \
+  --accum 2 \
   --batching shape \
   --val-frac 0.05 \
-  --lr 6e-4 \
-  --lambda-cdf 0.05 \
-  --cdf-bins 64 \
-  --cdf-tail-start 0.6 \
-  --cdf-tail-weight 2.0
+  --lr 1e-4 \
+  --arch flat_resnet \
+  --base 32 \
+  --flat-blocks 16 \
+  --flat-kernel 5 \
+  --flat-attention-every 4 \
+  --loss-mode kendall \
+  --lambda-grad 1.0 \
+  --lambda-cdf 1.0 \
+  --cdf-max-voxels 20000 \
+  --val-metric loss
 ```
 
 ## Repository Layout

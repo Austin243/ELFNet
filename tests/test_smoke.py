@@ -25,7 +25,7 @@ def test_elf_predictor_forward_shape():
         main, aux = model(x)
 
     assert tuple(main.shape) == (1, 1, 16, 16, 16)
-    assert len(aux) == 3
+    assert len(aux) == 0
     assert torch.isfinite(main).all()
 
 
