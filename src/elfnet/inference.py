@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """POSCAR-to-ELFCAR inference for full-grid ELFNet checkpoints.
 
-By default, inference uses the bundled ``weights/elfnet.ckpt`` checkpoint. Pass
+By default, inference uses ``weights/elfnet.ckpt`` when present. Pass
 another checkpoint path or set ``ELFNET_CHECKPOINT`` to override it. The
 pipeline:
 

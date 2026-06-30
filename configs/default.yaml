@@ -1,11 +1,5 @@
 checkpoint:
-  bundled: true
   default_name: elfnet.ckpt
-  sha256: 66dac5953e2b93cb0629b708c77cd444b20a40daa586514ab4187b6f2c995c34
-  source_run: pressure_flatresnet_c32_b16_k5_kendall_fixed_order/ELF_20260430_123836
-  epoch: 59
-  global_step: 72780
-  best_val_loss: -9.523093223571777
 
 model:
   class_name: ELFPredictor
@@ -55,8 +49,6 @@ loss:
   kendall_log_var_max: 5.0
 
 training:
-  dataset: pressure-triplets-326k-v1
-  structures: 326009
   lr: 0.0001
   weight_decay: 0.0001
   optimizer: AdamW

@@ -13,21 +13,8 @@ This repository contains the full-grid SAD-to-ELF model code.
 - Inference mode: one full-grid forward pass
 - Symmetry input: none
 - Patch inference: none
-- Default parameter count: `4,232,989`
-
-The default checkpoint is `weights/elfnet.ckpt`. You can pass another
+The package looks for `weights/elfnet.ckpt` by default. You can pass another
 checkpoint path at inference time or set `ELFNET_CHECKPOINT`.
-
-Bundled checkpoint provenance:
-
-```text
-source run: pressure_flatresnet_c32_b16_k5_kendall_fixed_order/ELF_20260430_123836
-checkpoint epoch: 59
-global step: 72780
-best val/loss: -9.523093223571777
-training structures: 326009
-checkpoint SHA256: 66dac5953e2b93cb0629b708c77cd444b20a40daa586514ab4187b6f2c995c34
-```
 
 ## Architecture
 
@@ -114,4 +101,3 @@ Any `<stem>_sym.npy` files are ignored by this model family.
 
 - Predictions are model estimates, not DFT calculations.
 - Quantitative comparison to VASP ELFCAR references requires a common grid.
-- Dataset archives are available through Git LFS.
