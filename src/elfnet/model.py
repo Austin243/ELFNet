@@ -351,7 +351,7 @@ class ELFPredictor(_LightningModuleBase):
     The constructor accepts both the public ASCII hyperparameter names and the
     legacy checkpoint keys, including ``"lambda1"``, ``"lambdag"``,
     ``"lambda_hist"``, and the original Greek-key variants. Defaults match the
-    bundled full-grid FlatResNet checkpoint.
+    current full-grid FlatResNet configuration.
     """
 
     def __init__(
