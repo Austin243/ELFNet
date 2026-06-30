@@ -6,6 +6,8 @@ atomic density (SAD) grids for periodic crystal structures.
 The repository includes inference and training code, a POSCAR example, and
 packaged neutral-density tables.
 
+All ELFNet data is available on Zenodo: <https://zenodo.org/records/20481629>.
+
 ## Install
 
 ```bash

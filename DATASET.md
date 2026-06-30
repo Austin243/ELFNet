@@ -1,9 +1,8 @@
 # ELFNet Dataset Notes
 
-Raw training arrays are stored as Git LFS archive assets under `release/`, not
-as regular Git blobs. See `DATA_RELEASES.md` for the packaged datasets and
-checksums. Custom training data should use the same paired full-grid SAD/ELF
-NumPy convention.
+All ELFNet data is available on Zenodo: <https://zenodo.org/records/20481629>.
+Custom training data should use the same paired full-grid SAD/ELF NumPy
+convention.
 
 Required files:
 
